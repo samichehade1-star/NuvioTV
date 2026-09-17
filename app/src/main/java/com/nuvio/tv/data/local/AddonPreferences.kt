@@ -83,6 +83,28 @@ class AddonPreferences @Inject constructor(
         }
     }
 
+    /**
+     * URLs that were seeded by default in an earlier build but turned out to be broken
+     * (missing artwork, dead streams) and should be actively removed even from installs
+     * that already seeded them.
+     */
+    private fun getRetiredDefaultAddons(): Set<String> = setOf(
+        "https://2ecbbd610840-stremio-ar.baby-beamup.club"
+    )
+
+    suspend fun pruneRetiredDefaultAddons() {
+        val retired = getRetiredDefaultAddons().map(::canonicalizeUrl).toSet()
+        store().edit { preferences ->
+            val current = getCurrentList(preferences)
+            val pruned = current.filterNot { canonicalizeUrl(it) in retired }
+            if (pruned.size == current.size) return@edit
+            preferences[orderedUrlsKey] = gson.toJson(pruned)
+            val states = getCurrentEnabledStates(preferences).toMutableMap()
+            retired.forEach(states::remove)
+            preferences[addonEnabledStatesKey] = gson.toJson(states)
+        }
+    }
+
     suspend fun ensureMigrated() {
         val ds = store()
         val prefs = ds.data.first()
@@ -242,7 +264,6 @@ class AddonPreferences @Inject constructor(
         "https://v3-cinemeta.strem.io",
         "https://opensubtitles-v3.strem.io",
         "https://torrentio.strem.fun",
-        "https://comet.elfhosted.com",
-        "https://2ecbbd610840-stremio-ar.baby-beamup.club"
+        "https://comet.elfhosted.com"
     )
 }

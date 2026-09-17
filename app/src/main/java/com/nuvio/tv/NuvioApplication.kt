@@ -25,6 +25,7 @@ import com.nuvio.tv.core.runtime.PluginRuntimeHooks
 import com.nuvio.tv.core.sync.StartupSyncService
 import com.nuvio.tv.core.sync.androidtv.AndroidTvChannelSyncService
 import com.nuvio.tv.core.network.IPv4FirstDns
+import com.nuvio.tv.data.local.AddonPreferences
 import com.nuvio.tv.data.local.CollectionsDataStore
 import com.nuvio.tv.data.local.ImagePerformancePreferences
 import com.nuvio.tv.data.local.SentrySettingsDataStore
@@ -51,6 +52,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
     @Inject lateinit var simklAnimeIdPreferenceHolder: SimklAnimeIdPreferenceHolder
     @Inject lateinit var pluginManager: PluginManager
     @Inject lateinit var collectionsDataStore: CollectionsDataStore
+    @Inject lateinit var addonPreferences: AddonPreferences
 
     companion object {
         /**
@@ -89,6 +91,9 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         androidTvChannelSyncService.start()
         CoroutineScope(Dispatchers.IO).launch {
             pluginManager.ensureDefaultRepositoriesSeeded()
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            addonPreferences.pruneRetiredDefaultAddons()
         }
         CoroutineScope(Dispatchers.IO).launch {
             collectionsDataStore.ensureDefaultNetworksSeeded()
