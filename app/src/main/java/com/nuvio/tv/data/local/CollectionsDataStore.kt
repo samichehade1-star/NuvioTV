@@ -1,6 +1,7 @@
 package com.nuvio.tv.data.local
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.gson.Gson
@@ -53,7 +54,22 @@ class CollectionsDataStore @Inject constructor(
 
     private val gson = Gson()
     private val collectionsKey = stringPreferencesKey("collections_json")
+    private val defaultNetworksSeededKey = booleanPreferencesKey("default_networks_seeded")
     private fun string(resId: Int, vararg args: Any): String = appContext.getString(resId, *args)
+
+    /**
+     * Seeds the default "browse by streaming service" collections (Netflix, Disney+, etc.) the
+     * first time a profile ever loads Collections with nothing configured. Guarded by a
+     * persisted flag so it never reappears after the user removes or edits these collections.
+     */
+    suspend fun ensureDefaultNetworksSeeded() {
+        val prefs = store().data.first()
+        if (prefs[defaultNetworksSeededKey] == true) return
+        val hasExisting = parseCollections(prefs[collectionsKey]).isNotEmpty()
+        store().edit { it[defaultNetworksSeededKey] = true }
+        if (hasExisting) return
+        setCollections(buildDefaultNetworkCollections())
+    }
 
     val collections: Flow<List<Collection>> =
         profileManager.activeProfileId.flatMapLatest { pid ->
