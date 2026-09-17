@@ -242,6 +242,7 @@ class AddonPreferences @Inject constructor(
         "https://v3-cinemeta.strem.io",
         "https://opensubtitles-v3.strem.io",
         "https://torrentio.strem.fun",
-        "https://comet.elfhosted.com"
+        "https://comet.elfhosted.com",
+        "https://2ecbbd610840-stremio-ar.baby-beamup.club"
     )
 }
