@@ -448,6 +448,27 @@ class PluginManager @Inject constructor(
     }
     
     /**
+     * Installs the default plugin repositories the first time a profile ever loads plugins,
+     * so a fresh install has a working free-source fallback out of the box. This runs
+     * third-party JavaScript scraper code (unlike the read-only Stremio addons) — only add
+     * a repository to DEFAULT_PLUGIN_REPOSITORY_URLS that's been explicitly vetted for this.
+     */
+    suspend fun ensureDefaultRepositoriesSeeded() {
+        if (dataStore.hasSeededDefaultRepository()) return
+        if (dataStore.repositories.first().isNotEmpty()) {
+            dataStore.markDefaultRepositorySeeded()
+            return
+        }
+        dataStore.markDefaultRepositorySeeded()
+        DEFAULT_PLUGIN_REPOSITORY_URLS.forEach { url ->
+            val result = addRepository(url)
+            if (result.isFailure) {
+                Log.w(TAG, "ensureDefaultRepositoriesSeeded: failed to add $url: ${result.exceptionOrNull()?.message}")
+            }
+        }
+    }
+
+    /**
      * Remove a repository and its scrapers
      */
     suspend fun removeRepository(repoId: String) {
@@ -1131,5 +1152,10 @@ class PluginManager @Inject constructor(
 
     companion object {
         private const val MAX_PARALLEL_DOWNLOADS = 10
+        private val DEFAULT_PLUGIN_REPOSITORY_URLS = listOf(
+            "https://raw.githubusercontent.com/D3adlyRocket/All-in-One-Nuvio/refs/heads/main/manifest.json",
+            "https://raw.githubusercontent.com/michat88/nuvio-providers/refs/heads/main/manifest.json",
+            "https://raw.githubusercontent.com/yoruix/nuvio-providers/refs/heads/main/manifest.json",
+        )
     }
 }

@@ -26,6 +26,8 @@ class PluginManager {
 
     suspend fun removeRepository(repoId: String) = Unit
 
+    suspend fun ensureDefaultRepositoriesSeeded() = Unit
+
     suspend fun reconcileWithRemoteRepoUrls(
         remotePlugins: List<RemotePluginInfo>,
         removeMissingLocal: Boolean = true
