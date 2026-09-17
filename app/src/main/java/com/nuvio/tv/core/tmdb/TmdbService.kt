@@ -2,6 +2,7 @@ package com.nuvio.tv.core.tmdb
 
 import android.util.Log
 import com.nuvio.tv.BuildConfig
+import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -14,7 +15,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "TmdbService"
-private val TMDB_API_KEY = BuildConfig.TMDB_API_KEY
+private val BUILT_IN_TMDB_API_KEY = BuildConfig.TMDB_API_KEY
 
 /**
  * Service to handle TMDB ID conversions and lookups.
@@ -22,8 +23,13 @@ private val TMDB_API_KEY = BuildConfig.TMDB_API_KEY
  */
 @Singleton
 class TmdbService @Inject constructor(
-    private val tmdbApi: TmdbApi
+    private val tmdbApi: TmdbApi,
+    private val tmdbSettingsDataStore: TmdbSettingsDataStore
 ) {
+    // Prefers the user's personal TMDB API key (set in Settings) over the build's shared key.
+    private val TMDB_API_KEY: String
+        get() = tmdbSettingsDataStore.settings.value.apiKey.ifBlank { BUILT_IN_TMDB_API_KEY }
+
     // Cache: IMDB ID -> TMDB ID (keyed by "$imdbId:$mediaType")
     private val imdbToTmdbCache = ConcurrentHashMap<String, Int>()
     

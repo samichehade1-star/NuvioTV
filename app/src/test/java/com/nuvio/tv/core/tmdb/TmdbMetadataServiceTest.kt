@@ -26,9 +26,13 @@ import com.nuvio.tv.data.remote.api.TmdbPersonResponse
 import com.nuvio.tv.data.remote.api.TmdbSeasonResponse
 import com.nuvio.tv.data.remote.api.TmdbTvContentRatingsResponse
 import com.nuvio.tv.data.remote.api.TmdbVideosResponse
+import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.domain.model.ContentType
+import com.nuvio.tv.domain.model.TmdbSettings
+import kotlinx.coroutines.flow.MutableStateFlow
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +54,9 @@ import java.util.concurrent.atomic.AtomicInteger
 @OptIn(ExperimentalCoroutinesApi::class)
 class TmdbMetadataServiceTest {
 
+    private fun fakeTmdbSettingsDataStore(): TmdbSettingsDataStore =
+        mockk { every { settings } returns MutableStateFlow(TmdbSettings()) }
+
     @Test
     fun `fetchEnrichment maps tmdb ids onto production and network companies`() = runTest {
         val api = mockk<TmdbApi>()
@@ -69,7 +76,7 @@ class TmdbMetadataServiceTest {
         coEvery { api.getMovieReleaseDates(any(), any()) } returns Response.success(TmdbMovieReleaseDatesResponse())
         coEvery { api.getMovieVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 10))
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
 
         val enrichment = service.fetchEnrichment(
             tmdbId = "10",
@@ -99,7 +106,7 @@ class TmdbMetadataServiceTest {
         coEvery { api.getTvContentRatings(any(), any()) } returns Response.success(TmdbTvContentRatingsResponse())
         coEvery { api.getTvVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 20))
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
 
         val enrichment = service.fetchEnrichment(
             tmdbId = "20",
@@ -127,7 +134,7 @@ class TmdbMetadataServiceTest {
         coEvery { api.getTvContentRatings(any(), any()) } returns Response.success(TmdbTvContentRatingsResponse())
         coEvery { api.getTvVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 21))
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
 
         val enrichment = service.fetchEnrichment(
             tmdbId = "21",
@@ -166,7 +173,7 @@ class TmdbMetadataServiceTest {
         }
         coEvery { api.getMovieVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 10))
 
-        val service = TmdbMetadataService(api, StandardTestDispatcher(testScheduler))
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore(), StandardTestDispatcher(testScheduler))
 
         val first = async { service.fetchEnrichment(tmdbId = "10", contentType = ContentType.MOVIE, language = "en") }
         val second = async { service.fetchEnrichment(tmdbId = "10", contentType = ContentType.MOVIE, language = "en") }
@@ -219,7 +226,7 @@ class TmdbMetadataServiceTest {
             }
         }
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val resultDeferred = async(Dispatchers.Default) {
             service.fetchEpisodeEnrichment(
                 tmdbId = "42",
@@ -304,7 +311,7 @@ class TmdbMetadataServiceTest {
             )
         }
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
 
         val data = service.fetchEntityBrowse(
             entityKind = TmdbEntityKind.COMPANY,
@@ -379,7 +386,7 @@ class TmdbMetadataServiceTest {
             api.discoverMovies(any(), any(), any(), any(), any(), any(), any())
         } throws AssertionError("movie discovery must not run for networks")
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
 
         val data = service.fetchEntityBrowse(
             entityKind = TmdbEntityKind.NETWORK,
@@ -439,7 +446,7 @@ class TmdbMetadataServiceTest {
             )
         )
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val page = service.fetchEntityRailPage(
             entityKind = TmdbEntityKind.NETWORK,
             entityId = 1,
@@ -627,7 +634,7 @@ class TmdbMetadataServiceTest {
         coEvery { api.getMovieReleaseDates(any(), any()) } returns Response.success(TmdbMovieReleaseDatesResponse())
         coEvery { api.getMovieVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 100))
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val enrichment = service.fetchEnrichment(
             tmdbId = "100",
             contentType = ContentType.MOVIE,
@@ -666,7 +673,7 @@ class TmdbMetadataServiceTest {
         coEvery { api.getMovieReleaseDates(any(), any()) } returns Response.success(TmdbMovieReleaseDatesResponse())
         coEvery { api.getMovieVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 10))
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val enrichment = service.fetchEnrichment(
             tmdbId = "10",
             contentType = ContentType.MOVIE,
@@ -693,7 +700,7 @@ class TmdbMetadataServiceTest {
         coEvery { api.getMovieReleaseDates(any(), any()) } returns Response.success(TmdbMovieReleaseDatesResponse())
         coEvery { api.getMovieVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 10))
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val enrichment = service.fetchEnrichment(
             tmdbId = "10",
             contentType = ContentType.MOVIE,
@@ -753,7 +760,7 @@ class TmdbMetadataServiceTest {
         coEvery { api.getTvContentRatings(any(), any()) } returns Response.success(TmdbTvContentRatingsResponse())
         coEvery { api.getTvVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 255358))
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val enrichment = service.fetchEnrichment(
             tmdbId = "255358",
             contentType = ContentType.SERIES,
@@ -786,7 +793,7 @@ class TmdbMetadataServiceTest {
         )
         coEvery { api.getPersonCombinedCredits(500, any(), "tr-TR") } returns Response.success(null)
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val detail = service.fetchPersonDetail(personId = 500, language = "tr-TR")
 
         assertNotNull(detail)
@@ -847,7 +854,7 @@ class TmdbMetadataServiceTest {
             )
         )
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val detail = service.fetchPersonDetail(personId = 500, language = "pl-PL")
 
         assertNotNull(detail)
@@ -900,7 +907,7 @@ class TmdbMetadataServiceTest {
         )
         coEvery { api.getMovieImages(any(), any(), any()) } returns Response.success(TmdbImagesResponse())
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val collection = service.fetchMovieCollection(collectionId = 10, language = "tr-TR")
 
         assertEquals("Chainsaw Man Collection", collection.name)
@@ -929,7 +936,7 @@ class TmdbMetadataServiceTest {
         )
         coEvery { api.getMovieImages(any(), any(), any()) } returns Response.success(TmdbImagesResponse())
 
-        val service = TmdbMetadataService(api)
+        val service = TmdbMetadataService(api, fakeTmdbSettingsDataStore())
         val collection = service.fetchMovieCollection(collectionId = 10, language = "ja-JP")
 
         assertEquals("チェンソーマン シリーズ", collection.name)

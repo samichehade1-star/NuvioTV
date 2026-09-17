@@ -1334,6 +1334,14 @@
     <string name="tmdb_subtitle">Choose which metadata fields should come from TMDB</string>
     <string name="tmdb_enable_title">Enable TMDB Enrichment</string>
     <string name="tmdb_enable_subtitle">Use TMDB as a metadata source to enhance addon data</string>
+    <string name="tmdb_api_key_title">Personal TMDB API Key</string>
+    <string name="tmdb_api_key_subtitle">Use your own TMDB API key instead of the shared default</string>
+    <string name="tmdb_api_key_not_set">Not set</string>
+    <string name="tmdb_api_key_set">Set</string>
+    <string name="tmdb_api_key_dialog_title">TMDB API Key</string>
+    <string name="tmdb_api_key_dialog_subtitle">Get a free key from themoviedb.org/settings/api</string>
+    <string name="tmdb_api_key_dialog_placeholder">Paste your TMDB API key</string>
+    <string name="tmdb_api_key_saved">TMDB API key saved</string>
     <string name="tmdb_modern_home_title">Enable on Modern Home</string>
     <string name="tmdb_modern_home_subtitle">Also apply TMDB enrichment to Modern Home hero and focused cards</string>
     <string name="tmdb_enrich_continue_watching_title">Enrich Continue Watching</string>

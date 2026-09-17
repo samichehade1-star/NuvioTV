@@ -4,6 +4,8 @@ data class TmdbSettings(
     val enabled: Boolean = false,
     val modernHomeEnabled: Boolean = false,
     val enrichContinueWatching: Boolean = true,
+    // Personal TMDB API key override. Blank means fall back to the build's baked-in key.
+    val apiKey: String = "",
     // TMDB language preference (ISO-639-1, default English)
     val language: String = "en",
     // Group: Artwork (logo, backdrop)

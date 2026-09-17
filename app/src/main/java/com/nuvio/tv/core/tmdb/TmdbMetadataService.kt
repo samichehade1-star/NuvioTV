@@ -2,6 +2,7 @@ package com.nuvio.tv.core.tmdb
 
 import android.util.Log
 import com.nuvio.tv.BuildConfig
+import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.remote.api.TmdbAggregateCreditsResponse
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbCastMember
@@ -40,7 +41,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 private const val TAG = "TmdbMetadataService"
-private val TMDB_API_KEY = BuildConfig.TMDB_API_KEY
+private val BUILT_IN_TMDB_API_KEY = BuildConfig.TMDB_API_KEY
 private const val TMDB_TRAILER_FALLBACK_LANGUAGE = "en-US"
 private const val TMDB_SEASON_REQUEST_CONCURRENCY = 4
 private val YOUTUBE_VIDEO_ID_REGEX = Regex("^[a-zA-Z0-9_-]{11}$")
@@ -48,10 +49,16 @@ private val YOUTUBE_VIDEO_ID_REGEX = Regex("^[a-zA-Z0-9_-]{11}$")
 @Singleton
 class TmdbMetadataService(
     private val tmdbApi: TmdbApi,
+    private val tmdbSettingsDataStore: TmdbSettingsDataStore,
     private val ioDispatcher: CoroutineDispatcher
 ) {
     @Inject
-    constructor(tmdbApi: TmdbApi) : this(tmdbApi, Dispatchers.IO)
+    constructor(tmdbApi: TmdbApi, tmdbSettingsDataStore: TmdbSettingsDataStore) :
+        this(tmdbApi, tmdbSettingsDataStore, Dispatchers.IO)
+
+    // Prefers the user's personal TMDB API key (set in Settings) over the build's shared key.
+    private val TMDB_API_KEY: String
+        get() = tmdbSettingsDataStore.settings.value.apiKey.ifBlank { BUILT_IN_TMDB_API_KEY }
 
     // In-memory caches
     private val enrichmentCache = ConcurrentHashMap<String, TmdbEnrichment>()

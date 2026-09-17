@@ -4,7 +4,10 @@ package com.nuvio.tv.ui.screens.settings
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import android.view.KeyEvent
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +17,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,15 +30,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.tv.material3.Border
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.data.local.AVAILABLE_TMDB_LANGUAGES
 import com.nuvio.tv.data.local.displayName
+import com.nuvio.tv.ui.components.NuvioDialog
 
 @Composable
 fun TmdbSettingsScreen(
@@ -54,6 +76,7 @@ fun TmdbSettingsContent(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var showApiKeyDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -91,6 +114,20 @@ fun TmdbSettingsContent(
                                 } else {
                                     Modifier
                                 })
+                    )
+                }
+
+                item(key = "tmdb_api_key") {
+                    SettingsActionRow(
+                        title = stringResource(R.string.tmdb_api_key_title),
+                        subtitle = stringResource(R.string.tmdb_api_key_subtitle),
+                        value = if (uiState.apiKey.isBlank()) {
+                            stringResource(R.string.tmdb_api_key_not_set)
+                        } else {
+                            stringResource(R.string.tmdb_api_key_set)
+                        },
+                        enabled = uiState.enabled,
+                        onClick = { showApiKeyDialog = true }
                     )
                 }
 
@@ -267,5 +304,124 @@ fun TmdbSettingsContent(
             },
             onDismiss = { showLanguageDialog = false }
         )
+    }
+
+    if (showApiKeyDialog) {
+        TmdbApiKeyDialog(
+            currentValue = uiState.apiKey,
+            onSave = { value ->
+                viewModel.onEvent(TmdbSettingsEvent.SetApiKey(value))
+                showApiKeyDialog = false
+            },
+            onDismiss = { showApiKeyDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun TmdbApiKeyDialog(
+    currentValue: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var value by remember(currentValue) { mutableStateOf(currentValue) }
+    var isInputFocused by remember { mutableStateOf(false) }
+    val inputFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+    val submit = {
+        focusManager.clearFocus()
+        keyboardController?.hide()
+        onSave(value.trim())
+        Toast.makeText(context, context.getString(R.string.tmdb_api_key_saved), Toast.LENGTH_SHORT).show()
+    }
+
+    LaunchedEffect(Unit) {
+        inputFocusRequester.requestFocus()
+    }
+
+    NuvioDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.tmdb_api_key_dialog_title),
+        subtitle = stringResource(R.string.tmdb_api_key_dialog_subtitle),
+        width = 700.dp,
+        suppressFirstKeyUp = false
+    ) {
+        Card(
+            onClick = { inputFocusRequester.requestFocus() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { isInputFocused = it.isFocused || it.hasFocus },
+            colors = CardDefaults.colors(
+                containerColor = NuvioTheme.colors.BackgroundElevated,
+                focusedContainerColor = NuvioTheme.colors.BackgroundElevated
+            ),
+            border = CardDefaults.border(
+                border = Border(
+                    border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
+                    shape = RoundedCornerShape(10.dp)
+                ),
+                focusedBorder = Border(
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                    shape = RoundedCornerShape(10.dp)
+                )
+            ),
+            shape = CardDefaults.shape(RoundedCornerShape(10.dp)),
+            scale = CardDefaults.scale(focusedScale = 1f)
+        ) {
+            Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = NuvioTheme.spacing.md)) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(inputFocusRequester)
+                        .onKeyEvent { event ->
+                            val native = event.nativeKeyEvent
+                            when {
+                                native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER &&
+                                    native.action == KeyEvent.ACTION_DOWN -> true
+                                (native.keyCode == KeyEvent.KEYCODE_ENTER ||
+                                    native.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) &&
+                                    native.action == KeyEvent.ACTION_DOWN -> {
+                                    submit()
+                                    true
+                                }
+                                else -> false
+                            }
+                        },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = NuvioTheme.colors.TextPrimary),
+                    cursorBrush = SolidColor(
+                        if (isInputFocused) NuvioTheme.colors.Primary else Color.Transparent
+                    ),
+                    decorationBox = { innerTextField ->
+                        if (value.isBlank()) {
+                            Text(
+                                text = stringResource(R.string.tmdb_api_key_dialog_placeholder),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NuvioTheme.colors.TextTertiary
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+            }
+        }
+
+        SettingsDialogActionRow {
+            SettingsDialogActionButton(
+                text = stringResource(R.string.action_clear),
+                onClick = { value = "" }
+            )
+            SettingsDialogActionButton(
+                text = stringResource(R.string.action_save),
+                onClick = { submit() },
+                primary = true
+            )
+        }
     }
 }
