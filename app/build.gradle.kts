@@ -145,7 +145,7 @@ android {
         buildConfigField("String", "SENTRY_DSN", buildConfigString(sentryDsn))
 
         // In-app updater (GitHub Releases)
-        buildConfigField("String", "GITHUB_OWNER", "\"NuvioMedia\"")
+        buildConfigField("String", "GITHUB_OWNER", "\"samichehade1-star\"")
         buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
     }
 
