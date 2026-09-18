@@ -73,16 +73,26 @@ class CollectionsDataStore @Inject constructor(
     }
 
     /**
-     * Actively removes any collection id in [RetiredDefaultNetworkCollectionIds] even from
-     * installs that already seeded it, not just excludes it from future seeding.
+     * Actively swaps out any collection id in [RetiredDefaultNetworkReplacements] for its
+     * replacement even on installs that already seeded the retired one, not just future ones.
+     * Falls back to dropping the retired entry if the replacement is somehow already present.
      */
     private suspend fun pruneRetiredDefaultNetworks() {
         val prefs = store().data.first()
         val current = parseCollections(prefs[collectionsKey])
-        val pruned = current.filterNot { it.id in RetiredDefaultNetworkCollectionIds }
-        if (pruned.size != current.size) {
-            setCollections(pruned)
+        if (current.none { it.id in RetiredDefaultNetworkReplacements }) return
+
+        val defaultsById = buildDefaultNetworkCollections().associateBy { it.id }
+        val currentIds = current.mapTo(mutableSetOf()) { it.id }
+        val updated = current.mapNotNull { collection ->
+            val replacementId = RetiredDefaultNetworkReplacements[collection.id]
+            when {
+                replacementId == null -> collection
+                replacementId in currentIds -> null
+                else -> defaultsById[replacementId]
+            }
         }
+        setCollections(updated)
     }
 
     val collections: Flow<List<Collection>> =
