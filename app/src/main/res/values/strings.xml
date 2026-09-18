@@ -1914,6 +1914,9 @@
 
     <string name="library_syncing">Syncing Trakt library\u2026</string>
     <string name="library_title">Library</string>
+    <string name="networks_hub_title">Networks</string>
+    <string name="networks_hub_empty_title">No networks configured</string>
+    <string name="networks_hub_empty_message">Add streaming-service collections from Settings \u203a Collections to browse them here.</string>
     <string name="library_filter_list">List</string>
     <string name="library_filter_type">Type</string>
     <string name="library_filter_sort">Sort</string>

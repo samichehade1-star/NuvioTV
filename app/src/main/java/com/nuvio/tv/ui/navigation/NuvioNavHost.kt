@@ -31,7 +31,7 @@ import com.nuvio.tv.ui.screens.detail.MetaDetailsScreen
 import com.nuvio.tv.ui.screens.home.HomeScreen
 import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
 import com.nuvio.tv.ui.screens.addon.CatalogOrderScreen
-import com.nuvio.tv.ui.screens.library.LibraryScreen
+import com.nuvio.tv.ui.screens.networks.NetworksHubScreen
 import com.nuvio.tv.ui.screens.player.PlayerExitReason
 import com.nuvio.tv.ui.screens.player.PlayerScreen
 import com.nuvio.tv.ui.screens.player.PostPlayRecommendation
@@ -1162,31 +1162,13 @@ private fun PlaybackNavHost(
         }
 
         composable(Screen.Library.route) {
-            LibraryScreen(
+            NetworksHubScreen(
                 showBuiltInHeader = !hideBuiltInHeaders,
                 onNavigateToDetail = { itemId, itemType, addonBaseUrl ->
                     navController.navigate(Screen.Detail.createRoute(itemId, itemType, addonBaseUrl))
                 },
-                onCloudPlaybackResolved = { info ->
-                    val filename = info.filename ?: info.file.name
-                    navController.navigate(
-                        Screen.Player.createRoute(
-                            streamUrl = info.url,
-                            title = filename,
-                            streamName = filename,
-                            contentType = "cloud",
-                            contentName = info.item.name,
-                            videoId = "${info.item.stableKey}:${info.file.stableKey}",
-                            season = 1,
-                            episode = info.sequenceIndex + 1,
-                            episodeTitle = filename,
-                            filename = filename,
-                            videoSize = info.videoSizeBytes,
-                            addonName = info.item.providerName,
-                            streamDescription = info.item.name,
-                            cloudSessionToken = info.sessionToken
-                        )
-                    )
+                onNavigateToFolderDetail = { collectionId, folderId ->
+                    navController.navigate(Screen.FolderDetail.createRoute(collectionId, folderId))
                 }
             )
         }

@@ -63,12 +63,26 @@ class CollectionsDataStore @Inject constructor(
      * persisted flag so it never reappears after the user removes or edits these collections.
      */
     suspend fun ensureDefaultNetworksSeeded() {
+        pruneRetiredDefaultNetworks()
         val prefs = store().data.first()
         if (prefs[defaultNetworksSeededKey] == true) return
         val hasExisting = parseCollections(prefs[collectionsKey]).isNotEmpty()
         store().edit { it[defaultNetworksSeededKey] = true }
         if (hasExisting) return
         setCollections(buildDefaultNetworkCollections())
+    }
+
+    /**
+     * Actively removes any collection id in [RetiredDefaultNetworkCollectionIds] even from
+     * installs that already seeded it, not just excludes it from future seeding.
+     */
+    private suspend fun pruneRetiredDefaultNetworks() {
+        val prefs = store().data.first()
+        val current = parseCollections(prefs[collectionsKey])
+        val pruned = current.filterNot { it.id in RetiredDefaultNetworkCollectionIds }
+        if (pruned.size != current.size) {
+            setCollections(pruned)
+        }
     }
 
     val collections: Flow<List<Collection>> =
