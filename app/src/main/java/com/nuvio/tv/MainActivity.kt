@@ -1776,7 +1776,7 @@ private fun ModernSidebarScaffold(
     var pendingContentFocusTransfer by remember { mutableStateOf(false) }
     var pendingSidebarFocusRequest by remember { mutableStateOf(false) }
     var focusedDrawerIndex by remember { mutableStateOf(-1) }
-    var isFloatingPillIconOnly by remember { mutableStateOf(false) }
+    var isFloatingPillIconOnly by remember { mutableStateOf(true) }
     var pillExpandRequestCount by remember { mutableIntStateOf(0) }
     val keepFloatingPillExpanded = false
     val keepSidebarFocusDuringCollapse =
@@ -1790,7 +1790,7 @@ private fun ModernSidebarScaffold(
             sidebarCollapsePending = false
             pendingContentFocusTransfer = false
             pendingSidebarFocusRequest = false
-            isFloatingPillIconOnly = false
+            isFloatingPillIconOnly = true
         }
     }
 
@@ -1804,14 +1804,6 @@ private fun ModernSidebarScaffold(
     LaunchedEffect(keepFloatingPillExpanded, showSidebar) {
         if (!showSidebar || keepFloatingPillExpanded) {
             isFloatingPillIconOnly = false
-        }
-    }
-
-    // Expand pill label briefly after navigating to a different root route
-    LaunchedEffect(selectedDrawerRoute) {
-        if (showSidebar && !isSidebarExpanded) {
-            isFloatingPillIconOnly = false
-            pillExpandRequestCount++
         }
     }
 
