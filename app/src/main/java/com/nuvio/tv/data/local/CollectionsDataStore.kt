@@ -8,6 +8,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.nuvio.tv.R
 import com.nuvio.tv.core.profile.ProfileManager
+import com.nuvio.tv.core.tmdb.TmdbCollectionSourceResolver
 import com.nuvio.tv.domain.model.AddonCatalogCollectionSource
 import com.nuvio.tv.domain.model.Collection
 import com.nuvio.tv.domain.model.CollectionCatalogSource
@@ -43,7 +44,8 @@ data class ValidationResult(
 class CollectionsDataStore @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val factory: ProfileDataStoreFactory,
-    private val profileManager: ProfileManager
+    private val profileManager: ProfileManager,
+    private val tmdbCollectionSourceResolver: TmdbCollectionSourceResolver
 ) {
     companion object {
         private const val FEATURE = "collections"
@@ -65,11 +67,38 @@ class CollectionsDataStore @Inject constructor(
     suspend fun ensureDefaultNetworksSeeded() {
         pruneRetiredDefaultNetworks()
         val prefs = store().data.first()
-        if (prefs[defaultNetworksSeededKey] == true) return
-        val hasExisting = parseCollections(prefs[collectionsKey]).isNotEmpty()
-        store().edit { it[defaultNetworksSeededKey] = true }
-        if (hasExisting) return
-        setCollections(buildDefaultNetworkCollections())
+        if (prefs[defaultNetworksSeededKey] != true) {
+            val hasExisting = parseCollections(prefs[collectionsKey]).isNotEmpty()
+            store().edit { it[defaultNetworksSeededKey] = true }
+            if (!hasExisting) {
+                setCollections(buildDefaultNetworkCollections())
+            }
+        }
+        backfillNetworkLogos()
+    }
+
+    /**
+     * Fills in a real brand logo (via TMDB company search) for any default network collection
+     * folder that doesn't have one yet — covers both freshly-seeded profiles and ones that
+     * already seeded these collections before artwork was added.
+     */
+    private suspend fun backfillNetworkLogos() {
+        val current = parseCollections(store().data.first()[collectionsKey])
+        val needsBackfill = current.any { collection ->
+            collection.id.startsWith("network_") && collection.folders.any { it.coverImageUrl.isNullOrBlank() }
+        }
+        if (!needsBackfill) return
+
+        val updated = current.map { collection ->
+            if (!collection.id.startsWith("network_")) return@map collection
+            val updatedFolders = collection.folders.map { folder ->
+                if (!folder.coverImageUrl.isNullOrBlank()) return@map folder
+                val logoUrl = tmdbCollectionSourceResolver.companyLogoUrlByName(collection.title)
+                if (logoUrl.isNullOrBlank()) folder else folder.copy(coverImageUrl = logoUrl)
+            }
+            collection.copy(folders = updatedFolders)
+        }
+        setCollections(updated)
     }
 
     /**

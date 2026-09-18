@@ -118,6 +118,20 @@ class TmdbCollectionSourceResolver @Inject constructor(
         )
     }
 
+    /**
+     * Looks up a brand logo by company/network name via TMDB's company search, so default
+     * "browse by streaming service" collections can show real artwork without needing to know
+     * TMDB's internal network/company ids for each service ahead of time.
+     */
+    suspend fun companyLogoUrlByName(name: String): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val results = tmdbApi.searchCompanies(tmdbApiKey, name).body()?.results.orEmpty()
+            val match = results.firstOrNull { it.name.equals(name, ignoreCase = true) && !it.logoPath.isNullOrBlank() }
+                ?: results.firstOrNull { !it.logoPath.isNullOrBlank() }
+            match?.logoPath?.let { imageUrl(it, "w500") }
+        }.getOrNull()
+    }
+
     suspend fun personImportMetadata(id: Int): TmdbSourceImportMetadata = withContext(Dispatchers.IO) {
         val language = tmdbSettingsDataStore.settings.first().language
         val body = tmdbApi.getPersonDetails(id, tmdbApiKey, language).body()
