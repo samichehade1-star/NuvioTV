@@ -110,6 +110,14 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.os.ConfigurationCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -1365,43 +1373,38 @@ private fun LegacySidebarScaffold(
     onNavigate: (String) -> Unit,
     onExitApp: () -> Unit
 ) {
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    // A permanently-visible narrow icon rail: it never widens and never overlays content.
+    // Focusing an icon reveals its label as a small floating tag next to it; there is no
+    // separate "open" panel state to pop out and cover the library grid.
     val drawerItemFocusRequesters = rememberDrawerItemFocusRequesters(drawerItems)
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val showSidebar = currentRoute in rootRoutes
 
     LaunchedEffect(currentRoute) {
         longPressBackHeld.value = false
-        drawerState.setValue(DrawerValue.Closed)
     }
 
     val sidebarTokens = NuvioComponents.tokens.sidebar
-    val closedDrawerWidth = if (sidebarCollapsed) NuvioTheme.spacing.none else sidebarTokens.legacyCollapsedWidth
-    val openDrawerWidth = sidebarTokens.legacyExpandedWidth
-    val openDrawerItemWidth = sidebarTokens.itemWidth
+    val railWidth = if (sidebarCollapsed) NuvioTheme.spacing.none else sidebarTokens.legacyCollapsedWidth
 
     val focusManager = LocalFocusManager.current
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     val contentFocusRequester = remember { FocusRequester() }
     var pendingContentFocusTransfer by remember { mutableStateOf(false) }
     var pendingSidebarFocusRequest by remember { mutableStateOf(false) }
-    // Bumped on every key event the drawer sees so the auto-collapse timer
-    // resets while the user navigates between drawer items.
-    var legacyDrawerInteractionVersion by remember { mutableStateOf(0) }
+    var sidebarHasFocus by remember { mutableStateOf(false) }
 
-
-    BackHandler(enabled = currentRoute in rootRoutes && drawerState.currentValue == DrawerValue.Closed) {
+    BackHandler(enabled = currentRoute in rootRoutes && !sidebarHasFocus) {
         pendingSidebarFocusRequest = true
-        drawerState.setValue(DrawerValue.Open)
     }
 
-    BackHandler(enabled = currentRoute in rootRoutes && drawerState.currentValue == DrawerValue.Open) {
+    BackHandler(enabled = currentRoute in rootRoutes && sidebarHasFocus) {
         if (longPressBackHeld.value) return@BackHandler
         onExitApp()
     }
 
-    LaunchedEffect(drawerState.currentValue, pendingContentFocusTransfer) {
-        if (!pendingContentFocusTransfer || drawerState.currentValue != DrawerValue.Closed) {
+    LaunchedEffect(sidebarHasFocus, pendingContentFocusTransfer) {
+        if (!pendingContentFocusTransfer || sidebarHasFocus) {
             return@LaunchedEffect
         }
         repeat(2) { withFrameNanos { } }
@@ -1409,8 +1412,8 @@ private fun LegacySidebarScaffold(
         pendingContentFocusTransfer = false
     }
 
-    LaunchedEffect(drawerState.currentValue, selectedDrawerRoute, showSidebar, pendingSidebarFocusRequest) {
-        if (!showSidebar || !pendingSidebarFocusRequest || drawerState.currentValue != DrawerValue.Open) {
+    LaunchedEffect(selectedDrawerRoute, showSidebar, pendingSidebarFocusRequest) {
+        if (!showSidebar || !pendingSidebarFocusRequest) {
             return@LaunchedEffect
         }
         val targetRoute = selectedDrawerRoute ?: drawerItems.firstOrNull()?.route ?: run {
@@ -1430,172 +1433,114 @@ private fun LegacySidebarScaffold(
         drawerItems = drawerItems,
         selectedDrawerRoute = selectedDrawerRoute,
         drawerItemFocusRequesters = drawerItemFocusRequesters,
-        sidebarOwnsFocus = showSidebar && drawerState.currentValue == DrawerValue.Open
+        sidebarOwnsFocus = showSidebar && sidebarHasFocus
     )
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = { drawerValue ->
-            if (showSidebar) {
-                val drawerWidth = if (drawerValue == DrawerValue.Open) openDrawerWidth else closedDrawerWidth
-                Box(
+    Row(modifier = Modifier.fillMaxSize()) {
+        if (showSidebar) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(railWidth)
+                    .background(NuvioTheme.colors.Background)
+                    .padding(NuvioTheme.spacing.card.outer)
+                    .selectableGroup()
+            ) {
+                Column(
                     modifier = Modifier
-                        .fillMaxHeight()
-                        .width(drawerWidth)
-                        .background(NuvioTheme.colors.Background)
-                        .padding(NuvioTheme.spacing.card.outer)
-                        .selectableGroup()
-                        .onPreviewKeyEvent { keyEvent ->
-                            if (keyEvent.type == KeyEventType.KeyDown) {
-                                legacyDrawerInteractionVersion++
-                            }
-                            val closeKey = if (isRtl) Key.DirectionLeft else Key.DirectionRight
-                            if (keyEvent.key == closeKey && keyEvent.type == KeyEventType.KeyDown) {
-                                drawerState.setValue(DrawerValue.Closed)
-                                pendingContentFocusTransfer = false
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
                 ) {
-                    val isExpanded = drawerValue == DrawerValue.Open
-                    val itemWidth by animateDpAsState(
-                        targetValue = if (isExpanded) openDrawerItemWidth else NuvioTheme.sizes.avatars.md,
-                        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
-                        label = "legacySidebarItemWidth"
-                    )
-
-                    if (isExpanded) {
-                        Column(
+                    Spacer(modifier = Modifier.height(30.dp))
+                    if (showProfileSelector && activeProfileName.isNotEmpty()) {
+                        var isProfileFocused by remember { mutableStateOf(false) }
+                        val profileBgColor = if (isProfileFocused) NuvioTheme.colors.FocusBackground else Color.Transparent
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.TopStart)
                                 .fillMaxWidth()
+                                .height(sidebarTokens.itemHeight)
+                                .background(color = profileBgColor, shape = NuvioTheme.shapes.navItem)
+                                .onFocusChanged { isProfileFocused = it.isFocused }
+                                .clickable { onSwitchProfile() }
+                                .focusProperties { canFocus = true },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Spacer(modifier = Modifier.height(30.dp))
-                            if (showProfileSelector && activeProfileName.isNotEmpty()) {
-                                var isProfileFocused by remember { mutableStateOf(false) }
-                                val profileItemShape = NuvioTheme.shapes.navItem
-                                val profileLeadingInset = NuvioTheme.spacing.lg + NuvioTheme.spacing.xxs
-                                val profileAvatarSize = NuvioTheme.sizes.sidebar.leadingVisual
-                                val profileLabelStart = 60.dp
-                                val profileGapAfterAvatar =
-                                    (profileLabelStart - profileLeadingInset - profileAvatarSize).coerceAtLeast(NuvioTheme.spacing.none)
-                                val profileBgColor = if (isProfileFocused) NuvioTheme.colors.FocusBackground else Color.Transparent
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .width(itemWidth)
-                                            .height(sidebarTokens.itemHeight)
-                                            .background(color = profileBgColor, shape = profileItemShape)
-                                            .onFocusChanged { isProfileFocused = it.isFocused }
-                                            .clickable {
-                                                onSwitchProfile()
-                                                drawerState.setValue(DrawerValue.Closed)
-                                            },
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Spacer(modifier = Modifier.width(profileLeadingInset))
-                                        ProfileAvatarCircle(
-                                            name = activeProfileName,
-                                            colorHex = activeProfileColorHex,
-                                            size = profileAvatarSize,
-                                            avatarImageUrl = activeProfileAvatarImageUrl,
-                                            imageCrossfade = false
-                                        )
-                                        Spacer(modifier = Modifier.width(profileGapAfterAvatar))
-                                        Text(
-                                            text = activeProfileName,
-                                            color = if (isProfileFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            textAlign = TextAlign.Start,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
-                            } else {
-                                BrandWordmark(
-                                    contentDescription = stringResource(R.string.app_name),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(42.dp)
-                                )
-                            }
+                            ProfileAvatarCircle(
+                                name = activeProfileName,
+                                colorHex = activeProfileColorHex,
+                                size = NuvioTheme.sizes.sidebar.leadingVisual,
+                                avatarImageUrl = activeProfileAvatarImageUrl,
+                                imageCrossfade = false
+                            )
                         }
+                        if (isProfileFocused) {
+                            LegacySidebarRailTooltip(label = activeProfileName)
+                        }
+                    } else {
+                        BrandWordmark(
+                            contentDescription = stringResource(R.string.app_name),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                        )
                     }
+                }
 
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .offset(y = 28.dp)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        drawerItems.forEach { item ->
-                            key(item.route) {
-                                LegacySidebarButton(
-                                    label = item.label,
-                                    iconRes = item.iconRes,
-                                    icon = item.icon,
-                                    selected = selectedDrawerRoute == item.route,
-                                    expanded = isExpanded,
-                                    onClick = {
-                                        keyboardController?.hide()
-                                        onNavigate(item.route)
-                                        navigateToDrawerRoute(
-                                            navController = navController,
-                                            currentRoute = currentRoute,
-                                            targetRoute = item.route
-                                        )
-                                        drawerState.setValue(DrawerValue.Closed)
-                                        pendingContentFocusTransfer = currentRoute == item.route
-                                    },
-                                    modifier = Modifier.focusRequester(
-                                        drawerItemFocusRequesters.getValue(item.route)
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(y = 28.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    drawerItems.forEach { item ->
+                        key(item.route) {
+                            LegacySidebarRailButton(
+                                label = item.label,
+                                iconRes = item.iconRes,
+                                icon = item.icon,
+                                selected = selectedDrawerRoute == item.route,
+                                onFocusChanged = { focused -> if (focused) sidebarHasFocus = true },
+                                onClick = {
+                                    keyboardController?.hide()
+                                    onNavigate(item.route)
+                                    navigateToDrawerRoute(
+                                        navController = navController,
+                                        currentRoute = currentRoute,
+                                        targetRoute = item.route
                                     )
-                                        .width(itemWidth)
-                                        .offset(x = NuvioTheme.spacing.md)
-                                )
+                                    sidebarHasFocus = false
+                                    pendingContentFocusTransfer = true
+                                },
+                                modifier = Modifier
+                                    .focusRequester(drawerItemFocusRequesters.getValue(item.route))
+                                    .fillMaxWidth()
+                            )
                         }
                     }
                 }
             }
         }
-        }
-    ) {
-        val contentStartPadding by animateDpAsState(
-            targetValue = if (showSidebar && !sidebarCollapsed) {
-                NuvioLayout.tokens.sidebarContentOffset
-            } else {
-                NuvioTheme.spacing.none
-            },
-            animationSpec = tween(NuvioMotion.tokens.durations.medium),
-            label = "contentStartPadding"
-        )
+
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(start = contentStartPadding)
+                .weight(1f)
+                .fillMaxHeight()
                 .onPreviewKeyEvent { keyEvent ->
-                    // Long-press Back on a root route directly opens the sidebar,
+                    // Long-press Back on a root route directly moves focus into the sidebar rail,
                     // bypassing the "scroll row to start" BackHandler in home content.
                     if (keyEvent.key == Key.Back) {
                         if (
                             keyEvent.type == KeyEventType.KeyDown &&
                             showSidebar &&
-                            drawerState.currentValue == DrawerValue.Closed &&
+                            !sidebarHasFocus &&
                             currentRoute in rootRoutes &&
                             keyEvent.nativeKeyEvent.isLongPress
                         ) {
                             if (!longPressBackHeld.value) {
                                 longPressBackHeld.value = true
                                 pendingSidebarFocusRequest = true
-                                drawerState.setValue(DrawerValue.Open)
                             }
                             return@onPreviewKeyEvent true
                         }
@@ -1610,7 +1555,7 @@ private fun LegacySidebarScaffold(
                     val openKey = if (isRtl) Key.DirectionRight else Key.DirectionLeft
                     if (
                         showSidebar &&
-                        drawerState.currentValue == DrawerValue.Closed &&
+                        !sidebarHasFocus &&
                         keyEvent.type == KeyEventType.KeyDown &&
                         keyEvent.key == openKey
                     ) {
@@ -1618,7 +1563,6 @@ private fun LegacySidebarScaffold(
                             true
                         } else {
                             pendingSidebarFocusRequest = true
-                            drawerState.setValue(DrawerValue.Open)
                             true
                         }
                     } else {
@@ -1627,7 +1571,7 @@ private fun LegacySidebarScaffold(
                 }
         ) {
             CompositionLocalProvider(
-                LocalSidebarExpanded provides (drawerState.currentValue == DrawerValue.Open),
+                LocalSidebarExpanded provides sidebarHasFocus,
                 LocalContentFocusRequester provides contentFocusRequester
             ) {
                 NuvioNavHost(
@@ -1641,65 +1585,58 @@ private fun LegacySidebarScaffold(
 }
 
 @Composable
-private fun LegacySidebarButton(
+private fun LegacySidebarRailTooltip(label: String) {
+    Box(
+        modifier = Modifier
+            .background(NuvioTheme.colors.BackgroundElevated, NuvioTheme.shapes.navItem)
+            .padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.xs)
+    ) {
+        Text(
+            text = label,
+            color = NuvioTheme.colors.TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun LegacySidebarRailButton(
     label: String,
     iconRes: Int?,
     icon: ImageVector?,
     selected: Boolean,
-    expanded: Boolean,
+    onFocusChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    var anchorBounds by remember { mutableStateOf<Rect?>(null) }
+    val density = LocalDensity.current
     val itemShape = NuvioTheme.shapes.navItem
     val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isFocused -> NuvioTheme.colors.FocusBackground
-            expanded && selected -> NuvioTheme.colors.Secondary
-            else -> Color.Transparent
-        },
-        label = "legacySidebarItemBackground"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = when {
-            isFocused -> NuvioTheme.colors.TextPrimary
-            expanded && selected -> NuvioTheme.colors.OnSecondary
-            else -> NuvioTheme.colors.TextSecondary
-        },
-        label = "legacySidebarItemContent"
+        targetValue = if (isFocused) NuvioTheme.colors.FocusBackground else Color.Transparent,
+        label = "legacyRailItemBackground"
     )
     val iconTint by animateColorAsState(
         targetValue = when {
             isFocused -> NuvioTheme.colors.TextPrimary
-            expanded && selected -> NuvioTheme.colors.OnSecondary
             selected -> NuvioTheme.colors.Secondary
-            !expanded -> NuvioTheme.colors.TextTertiary
-            else -> NuvioTheme.colors.TextSecondary
+            else -> NuvioTheme.colors.TextTertiary
         },
-        label = "legacySidebarItemIconTint"
+        label = "legacyRailItemIconTint"
     )
-    val selectedCollapsedIconBrush = if (selected && !expanded) {
-        NuvioTheme.palette.accentBrush()
-    } else {
-        null
-    }
-    val itemScale by animateFloatAsState(
-        targetValue = if (isFocused && expanded) 1.1f else 1f,
-        animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
-        label = "legacySidebarItemScale"
-    )
+    val selectedIconBrush = if (selected && !isFocused) NuvioTheme.palette.accentBrush() else null
 
     Card(
         onClick = onClick,
         modifier = modifier
             .height(NuvioComponents.tokens.sidebar.itemHeight)
-            .graphicsLayer {
-                scaleX = itemScale
-                scaleY = itemScale
-                transformOrigin = TransformOrigin.Center
-            }
-            .focusProperties { canFocus = expanded }
-            .onFocusChanged { isFocused = it.hasFocus },
+            .onGloballyPositioned { anchorBounds = it.boundsInWindow() }
+            .onFocusChanged {
+                isFocused = it.hasFocus
+                onFocusChanged(it.hasFocus)
+            },
         colors = CardDefaults.colors(
             containerColor = backgroundColor,
             focusedContainerColor = backgroundColor,
@@ -1714,29 +1651,40 @@ private fun LegacySidebarButton(
         shape = CardDefaults.shape(shape = itemShape),
         scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-        DrawerItemIcon(
-            iconRes = iconRes,
-            icon = icon,
-            tint = iconTint,
-            brush = selectedCollapsedIconBrush,
-            modifier = Modifier
-                .size(NuvioComponents.tokens.sidebar.iconSize)
-                .align(Alignment.CenterStart)
-                .offset(x = 13.dp)
-        )
-        if (expanded) {
-            com.nuvio.tv.ui.components.AutoResizeText(
-                text = label,
-                color = contentColor,
-                textAlign = TextAlign.Start,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 54.dp, end = 14.dp)
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            DrawerItemIcon(
+                iconRes = iconRes,
+                icon = icon,
+                tint = iconTint,
+                brush = selectedIconBrush,
+                modifier = Modifier.size(NuvioComponents.tokens.sidebar.iconSize)
             )
         }
     }
-}
+
+    val bounds = anchorBounds
+    if (isFocused && bounds != null) {
+        val labelOffsetPx = with(density) { NuvioTheme.spacing.sm.roundToPx() }
+        Popup(
+            popupPositionProvider = remember(bounds, labelOffsetPx) {
+                object : PopupPositionProvider {
+                    override fun calculatePosition(
+                        anchorBounds: IntRect,
+                        windowSize: IntSize,
+                        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+                        popupContentSize: IntSize
+                    ): IntOffset {
+                        val x = bounds.right.toInt() + labelOffsetPx
+                        val y = (bounds.top + bounds.height / 2 - popupContentSize.height / 2).toInt()
+                        return IntOffset(x, y)
+                    }
+                }
+            },
+            properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            LegacySidebarRailTooltip(label = label)
+        }
+    }
 }
 
 @Composable
