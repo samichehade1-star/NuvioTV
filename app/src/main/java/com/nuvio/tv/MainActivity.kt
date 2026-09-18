@@ -1801,12 +1801,6 @@ private fun ModernSidebarScaffold(
         }
     }
 
-    LaunchedEffect(keepFloatingPillExpanded, showSidebar) {
-        if (!showSidebar || keepFloatingPillExpanded) {
-            isFloatingPillIconOnly = false
-        }
-    }
-
     BackHandler(enabled = currentRoute in rootRoutes && !isSidebarExpanded && !sidebarCollapsePending) {
         isSidebarExpanded = true
         sidebarCollapsePending = false

@@ -49,7 +49,7 @@ data class LayoutSettingsUiState(
     val modernLandscapePostersEnabled: Boolean = false,
     val modernHeroFullScreenBackdropEnabled: Boolean = false,
     val heroSectionEnabled: Boolean = true,
-    val discoverLocation: DiscoverLocation = DiscoverLocation.IN_SEARCH,
+    val discoverLocation: DiscoverLocation = DiscoverLocation.IN_SIDEBAR,
     val lastNonOffDiscoverLocation: DiscoverLocation = DiscoverLocation.IN_SEARCH,
     val posterLabelsEnabled: Boolean = true,
     val catalogAddonNameEnabled: Boolean = true,
