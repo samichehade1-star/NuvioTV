@@ -102,7 +102,7 @@ android {
 
     defaultConfig {
         applicationId = "com.nuvio.tv"
-        minSdk = 24
+        minSdk = 22
         targetSdk = 36
         versionCode = 1063
         versionName = "0.9.7"
