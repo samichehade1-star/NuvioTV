@@ -2,8 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-sdk tools:overrideLibrary="com.dokar.quickjs,androidx.media3.decoder.ffmpeg,io.github.anilbeesetti.nextlib.mediainfo,androidx.tv.material3,androidx.tv.foundation,androidx.tv.material,androidx.tv.tv-material,androidx.tv.tv-foundation,androidx.tv.material3.tv-material,dev.chrisbanes.haze,androidx.metrics.performance" />
-
     <!-- Android 11+ fix: SpeechRecognizer not available without this -->
     <!-- https://stackoverflow.com/questions/64319117/speechrecognizer-not-available-when-targeting-android-11 -->
     <queries>
