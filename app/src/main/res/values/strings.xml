@@ -2899,6 +2899,7 @@
 
     <!-- Stream / TMDB / addons fallbacks -->
     <string name="stream_unknown">Unknown Stream</string>
+    <string name="stream_recommended">Recommended</string>
     <string name="stream_embedded_group">Embedded Streams</string>
     <string name="stream_embedded_fallback_name">Embed Stream</string>
     <string name="stream_quality_unknown">Unknown</string>

@@ -442,6 +442,10 @@ fun StreamScreen(
                     availableAddons = uiState.availableAddons,
                     sourceChips = uiState.sourceChips,
                     selectedAddonFilter = uiState.selectedAddonFilter,
+                    availableQualityFilters = uiState.availableQualityFilters,
+                    selectedQualityFilter = uiState.selectedQualityFilter,
+                    onQualityFilterSelected = { viewModel.onEvent(StreamScreenEvent.OnQualityFilterSelected(it)) },
+                    recommendedStream = uiState.recommendedStream,
                     showFileSizeBadges = streamBadgeSettings.showFileSizeBadges,
                     showAddonLogo = streamBadgeSettings.showAddonLogo,
                     badgePlacement = streamBadgeSettings.badgePlacement,
@@ -724,6 +728,10 @@ private fun RightStreamSection(
     availableAddons: List<String>,
     sourceChips: List<SourceChipItem>,
     selectedAddonFilter: String?,
+    availableQualityFilters: List<String> = emptyList(),
+    selectedQualityFilter: String? = null,
+    onQualityFilterSelected: (String?) -> Unit = {},
+    recommendedStream: Stream? = null,
     showFileSizeBadges: Boolean,
     showAddonLogo: Boolean,
     badgePlacement: StreamBadgePlacement,
@@ -853,6 +861,18 @@ private fun RightStreamSection(
             }
         }
 
+        if (availableQualityFilters.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+            Box(modifier = Modifier.height(chipRowHeight)) {
+                AddonFilterChips(
+                    addons = availableQualityFilters,
+                    selectedAddon = selectedQualityFilter,
+                    onAddonSelected = onQualityFilterSelected,
+                    debugTag = "StreamScreenQuality"
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
         androidx.compose.animation.AnimatedVisibility(
@@ -912,6 +932,7 @@ private fun RightStreamSection(
                             firstStreamFocusRequestId = firstStreamFocusRequestId,
                             availableAddons = availableAddons,
                             selectedAddonFilter = selectedAddonFilter,
+                            recommendedStream = recommendedStream,
                             showFileSizeBadges = showFileSizeBadges,
                             showAddonLogo = showAddonLogo,
                             badgePlacement = badgePlacement,
@@ -1030,6 +1051,7 @@ private fun StreamsList(
     firstStreamFocusRequestId: Int = 0,
     availableAddons: List<String> = emptyList(),
     selectedAddonFilter: String? = null,
+    recommendedStream: Stream? = null,
     showFileSizeBadges: Boolean = true,
     showAddonLogo: Boolean = true,
     badgePlacement: StreamBadgePlacement = StreamBadgePlacement.BOTTOM,
@@ -1160,6 +1182,7 @@ private fun StreamsList(
                     showAddonLogo = showAddonLogo,
                     badgePlacement = badgePlacement,
                     reserveBadgeSpace = hasBadgeRules && stream.badges.isEmpty(),
+                    isRecommended = recommendedStream != null && stream == recommendedStream,
                     onClick = { onStreamSelected(stream) },
                     focusRequester = when {
                         shouldRestoreFocusedStream && index == focusedStreamIndex.coerceIn(0, (streams.lastIndex).coerceAtLeast(0)) -> restoreFocusRequester
@@ -1189,6 +1212,7 @@ private fun StreamCard(
     showAddonLogo: Boolean,
     badgePlacement: StreamBadgePlacement,
     reserveBadgeSpace: Boolean = false,
+    isRecommended: Boolean = false,
     onClick: () -> Unit,
     focusRequester: FocusRequester? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
@@ -1279,6 +1303,22 @@ private fun StreamCard(
                         )
                     } else {
                         Spacer(modifier = Modifier.height(20.dp))
+                    }
+                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
+                }
+
+                if (isRecommended) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(NuvioTheme.radii.full))
+                            .background(NuvioTheme.palette.accentBrush())
+                            .padding(horizontal = NuvioTheme.spacing.sm, vertical = NuvioTheme.spacing.hairline)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.stream_recommended),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White
+                        )
                     }
                     Spacer(modifier = Modifier.height(NuvioTheme.spacing.xxs))
                 }

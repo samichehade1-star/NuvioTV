@@ -30,6 +30,7 @@ data class StreamScreenUiState(
     val addonStreams: List<AddonStreams> = emptyList(),
     val allStreams: List<Stream> = emptyList(),
     val selectedAddonFilter: String? = null, // null means "All"
+    val selectedQualityFilter: String? = null, // null means "All"
     val filteredStreams: List<Stream> = emptyList(),
     val availableAddons: List<String> = emptyList(),
     val sourceChips: List<SourceChipItem> = emptyList(),
@@ -39,10 +40,25 @@ data class StreamScreenUiState(
     val playbackErrorMessage: String? = null
 ) {
     val isEpisode: Boolean get() = season != null && episode != null
+
+    /** Best pick across every stream found (independent of the active filters), if any stands out. */
+    val recommendedStream: Stream?
+        get() = allStreams.maxByOrNull { it.recommendationScore }
+            ?.takeIf { it.recommendationScore >= 30 }
+
+    /** Quality buckets present across the addon-filtered selection, for building the filter row. */
+    val availableQualityFilters: List<String>
+        get() {
+            val byAddon = if (selectedAddonFilter == null) allStreams
+                else allStreams.filter { it.addonName == selectedAddonFilter }
+            val present = byAddon.mapNotNull { it.qualityBucket }.toSet()
+            return listOf("4K", "1080p", "720p", "SD").filter { it in present }
+        }
 }
 
 sealed class StreamScreenEvent {
     data class OnAddonFilterSelected(val addonName: String?) : StreamScreenEvent()
+    data class OnQualityFilterSelected(val quality: String?) : StreamScreenEvent()
     data class OnStreamSelected(val stream: Stream) : StreamScreenEvent()
     data object OnAutoPlayConsumed : StreamScreenEvent()
     data object OnRefresh : StreamScreenEvent()

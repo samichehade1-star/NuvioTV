@@ -100,6 +100,38 @@ data class Stream(
             resolve.isCached == true
     }
 
+    /** Normalized quality bucket ("4K", "1080p", "720p", "SD") for filtering, or null if unknown. */
+    val qualityBucket: String?
+        get() = when {
+            qualityValue >= 2160 -> "4K"
+            qualityValue == 1080 -> "1080p"
+            qualityValue == 720 -> "720p"
+            qualityValue > 0 -> "SD"
+            else -> null
+        }
+
+    /**
+     * Heuristic score for surfacing a "Recommended" pick: favors higher resolution, HDR, and a
+     * cached/direct debrid source (fast, reliable playback) over a raw torrent that still needs
+     * peers. There's no way to know ahead of time whether a stream's file has chapter markers -
+     * that's only readable once the player has actually loaded it - so this can't factor that in.
+     */
+    val recommendationScore: Int
+        get() {
+            var score = when (qualityBucket) {
+                "4K" -> 40
+                "1080p" -> 30
+                "720p" -> 20
+                "SD" -> 10
+                else -> 0
+            }
+            if (!clientResolve?.stream?.raw?.parsed?.hdr.isNullOrEmpty()) score += 5
+            val isCachedDebrid = isDirectDebrid() || debridCacheStatus?.state == StreamDebridCacheState.CACHED
+            if (isCachedDebrid) score += 25
+            else if (isTorrent()) score -= 5
+            return score
+        }
+
     /**
      * Returns true if this is a YouTube stream
      */

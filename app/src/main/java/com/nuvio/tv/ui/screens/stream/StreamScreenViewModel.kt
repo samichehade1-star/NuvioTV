@@ -207,12 +207,11 @@ class StreamScreenViewModel @Inject constructor(
                             )
                         }
                         val updatedAllStreams = updatedAddonStreams.flatMap { it.streams }
-                        val currentFilter = state.selectedAddonFilter
-                        val fullFiltered = if (currentFilter == null) {
-                            updatedAllStreams
-                        } else {
-                            updatedAllStreams.filter { it.addonName == currentFilter }
-                        }
+                        val fullFiltered = applyStreamFilters(
+                            updatedAllStreams,
+                            state.selectedAddonFilter,
+                            state.selectedQualityFilter,
+                        )
                         streamFilterFullList = fullFiltered
                         val pageEnd = state.filteredStreams.size.coerceAtMost(fullFiltered.size)
                             .coerceAtLeast(STREAM_FILTER_PAGE_SIZE.coerceAtMost(fullFiltered.size))
@@ -269,6 +268,7 @@ class StreamScreenViewModel @Inject constructor(
     fun onEvent(event: StreamScreenEvent) {
         when (event) {
             is StreamScreenEvent.OnAddonFilterSelected -> filterByAddon(event.addonName)
+            is StreamScreenEvent.OnQualityFilterSelected -> filterByQuality(event.quality)
             is StreamScreenEvent.OnStreamSelected -> {
                 cancelStreamsLoad()
             }
@@ -300,6 +300,7 @@ class StreamScreenViewModel @Inject constructor(
                         isLoading = true,
                         error = null,
                         selectedAddonFilter = null,
+                        selectedQualityFilter = null,
                         filteredStreams = emptyList()
                     )
                 }
@@ -526,12 +527,11 @@ class StreamScreenViewModel @Inject constructor(
                     resolvedAutoPlayTarget = true
                 }
 
-                val currentFilter = _uiState.value.selectedAddonFilter
-                val fullFiltered = if (currentFilter == null) {
-                    allStreams
-                } else {
-                    allStreams.filter { it.addonName == currentFilter }
-                }
+                val fullFiltered = applyStreamFilters(
+                    allStreams,
+                    _uiState.value.selectedAddonFilter,
+                    _uiState.value.selectedQualityFilter,
+                )
                 streamFilterFullList = fullFiltered
                 val paginatedStreams = if (fullFiltered.size > STREAM_FILTER_PAGE_SIZE) {
                     fullFiltered.subList(0, STREAM_FILTER_PAGE_SIZE)
@@ -631,12 +631,11 @@ class StreamScreenViewModel @Inject constructor(
                                 val updatedAllStreams = updatedGroups.flatMap { addonStreams ->
                                     addonStreams.streams
                                 }
-                                val currentFilter = state.selectedAddonFilter
-                                val fullFiltered = if (currentFilter == null) {
-                                    updatedAllStreams
-                                } else {
-                                    updatedAllStreams.filter { it.addonName == currentFilter }
-                                }
+                                val fullFiltered = applyStreamFilters(
+                                    updatedAllStreams,
+                                    state.selectedAddonFilter,
+                                    state.selectedQualityFilter,
+                                )
                                 streamFilterFullList = fullFiltered
                                 val pageEnd = state.filteredStreams.size.coerceAtMost(fullFiltered.size)
                                     .coerceAtLeast(STREAM_FILTER_PAGE_SIZE.coerceAtMost(fullFiltered.size))
@@ -1125,17 +1124,22 @@ class StreamScreenViewModel @Inject constructor(
         return parseRuntimeMinutes(meta.runtime)
     }
 
+    private fun applyStreamFilters(
+        streams: List<Stream>,
+        addonFilter: String?,
+        qualityFilter: String?,
+    ): List<Stream> {
+        val byAddon = if (addonFilter == null) streams else streams.filter { it.addonName == addonFilter }
+        return if (qualityFilter == null) byAddon else byAddon.filter { it.qualityBucket == qualityFilter }
+    }
+
     private fun filterByAddon(addonName: String?) {
         streamFilterExpandJob?.cancel()
         updateUiStateIfChanged { state ->
             if (state.selectedAddonFilter == addonName) {
                 return@updateUiStateIfChanged state
             }
-            val fullFiltered = if (addonName == null) {
-                state.allStreams
-            } else {
-                state.allStreams.filter { it.addonName == addonName }
-            }
+            val fullFiltered = applyStreamFilters(state.allStreams, addonName, state.selectedQualityFilter)
             streamFilterFullList = fullFiltered
             val paginatedStreams = if (fullFiltered.size > STREAM_FILTER_PAGE_SIZE) {
                 fullFiltered.subList(0, STREAM_FILTER_PAGE_SIZE)
@@ -1144,6 +1148,26 @@ class StreamScreenViewModel @Inject constructor(
             }
             state.copy(
                 selectedAddonFilter = addonName,
+                filteredStreams = paginatedStreams
+            )
+        }
+    }
+
+    private fun filterByQuality(quality: String?) {
+        streamFilterExpandJob?.cancel()
+        updateUiStateIfChanged { state ->
+            if (state.selectedQualityFilter == quality) {
+                return@updateUiStateIfChanged state
+            }
+            val fullFiltered = applyStreamFilters(state.allStreams, state.selectedAddonFilter, quality)
+            streamFilterFullList = fullFiltered
+            val paginatedStreams = if (fullFiltered.size > STREAM_FILTER_PAGE_SIZE) {
+                fullFiltered.subList(0, STREAM_FILTER_PAGE_SIZE)
+            } else {
+                fullFiltered
+            }
+            state.copy(
+                selectedQualityFilter = quality,
                 filteredStreams = paginatedStreams
             )
         }
