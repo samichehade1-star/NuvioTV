@@ -308,6 +308,24 @@ private fun FolderCard(
                         .clip(shape),
                     contentScale = ContentScale.FillBounds
                 )
+            } else if (!folder.titleLogoUrl.isNullOrBlank()) {
+                // Brand logos have their own aspect ratio - FillBounds would stretch them into
+                // a square/poster shape, so they're contained on a neutral backdrop instead.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(NuvioTheme.colors.BackgroundCard),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AsyncImage(
+                        model = folder.titleLogoUrl,
+                        contentDescription = folder.title,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(NuvioTheme.spacing.lg),
+                        contentScale = ContentScale.Fit
+                    )
+                }
             } else if (!folder.coverEmoji.isNullOrBlank()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),

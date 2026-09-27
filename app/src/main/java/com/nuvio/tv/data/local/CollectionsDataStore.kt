@@ -80,21 +80,33 @@ class CollectionsDataStore @Inject constructor(
     /**
      * Fills in a real brand logo (via TMDB company search) for any default network collection
      * folder that doesn't have one yet — covers both freshly-seeded profiles and ones that
-     * already seeded these collections before artwork was added.
+     * already seeded these collections before artwork was added. Stored as titleLogoUrl (a
+     * contained, aspect-ratio-preserving logo) rather than coverImageUrl (a FillBounds cover
+     * image) since a brand logo stretched to fill a square/poster tile looks distorted. Installs
+     * that got a coverImageUrl from an earlier version of this backfill get migrated over.
      */
     private suspend fun backfillNetworkLogos() {
         val current = parseCollections(store().data.first()[collectionsKey])
         val needsBackfill = current.any { collection ->
-            collection.id.startsWith("network_") && collection.folders.any { it.coverImageUrl.isNullOrBlank() }
+            collection.id.startsWith("network_") && collection.folders.any {
+                it.titleLogoUrl.isNullOrBlank() || !it.coverImageUrl.isNullOrBlank()
+            }
         }
         if (!needsBackfill) return
 
         val updated = current.map { collection ->
             if (!collection.id.startsWith("network_")) return@map collection
             val updatedFolders = collection.folders.map { folder ->
-                if (!folder.coverImageUrl.isNullOrBlank()) return@map folder
+                if (!folder.coverImageUrl.isNullOrBlank()) {
+                    // Migrate a logo mistakenly stored as a stretched cover image.
+                    return@map folder.copy(
+                        coverImageUrl = null,
+                        titleLogoUrl = folder.titleLogoUrl?.takeIf { it.isNotBlank() } ?: folder.coverImageUrl,
+                    )
+                }
+                if (!folder.titleLogoUrl.isNullOrBlank()) return@map folder
                 val logoUrl = tmdbCollectionSourceResolver.companyLogoUrlByName(collection.title)
-                if (logoUrl.isNullOrBlank()) folder else folder.copy(coverImageUrl = logoUrl)
+                if (logoUrl.isNullOrBlank()) folder else folder.copy(titleLogoUrl = logoUrl)
             }
             collection.copy(folders = updatedFolders)
         }
