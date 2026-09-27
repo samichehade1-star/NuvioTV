@@ -387,6 +387,17 @@ fun LayoutSettingsContent(
                         },
                         onFocused = { focusedSection = LayoutSettingsSection.HOME_CONTENT }
                     )
+                    CompactToggleRow(
+                        title = stringResource(R.string.layout_favorites_tab),
+                        subtitle = stringResource(R.string.layout_favorites_tab_sub),
+                        checked = uiState.favoritesTabEnabled,
+                        onToggle = {
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetFavoritesTabEnabled(!uiState.favoritesTabEnabled)
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.HOME_CONTENT }
+                    )
                     if (uiState.modernSidebarEnabled && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                         CompactToggleRow(
                             title = stringResource(R.string.layout_modern_sidebar_blur),

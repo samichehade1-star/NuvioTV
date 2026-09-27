@@ -45,6 +45,7 @@ data class LayoutSettingsUiState(
     val heroCatalogKeys: List<String> = emptyList(),
     val sidebarCollapsedByDefault: Boolean = false,
     val modernSidebarEnabled: Boolean = false,
+    val favoritesTabEnabled: Boolean = true,
     val modernSidebarBlurEnabled: Boolean = false,
     val modernLandscapePostersEnabled: Boolean = false,
     val modernHeroFullScreenBackdropEnabled: Boolean = false,
@@ -95,6 +96,7 @@ sealed class LayoutSettingsEvent {
     data class ToggleHeroCatalog(val catalogKey: String) : LayoutSettingsEvent()
     data class SetSidebarCollapsed(val collapsed: Boolean) : LayoutSettingsEvent()
     data class SetModernSidebarEnabled(val enabled: Boolean) : LayoutSettingsEvent()
+    data class SetFavoritesTabEnabled(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetModernSidebarBlurEnabled(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetModernLandscapePostersEnabled(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetModernHeroFullScreenBackdropEnabled(val enabled: Boolean) : LayoutSettingsEvent()
@@ -200,6 +202,11 @@ class LayoutSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             layoutPreferenceDataStore.modernSidebarEnabled.distinctUntilChanged().collectLatest { enabled ->
                 updateUiStateIfChanged { it.copy(modernSidebarEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            layoutPreferenceDataStore.favoritesTabEnabled.distinctUntilChanged().collectLatest { enabled ->
+                updateUiStateIfChanged { it.copy(favoritesTabEnabled = enabled) }
             }
         }
         viewModelScope.launch {
@@ -397,6 +404,7 @@ class LayoutSettingsViewModel @Inject constructor(
             is LayoutSettingsEvent.ToggleHeroCatalog -> toggleHeroCatalog(event.catalogKey)
             is LayoutSettingsEvent.SetSidebarCollapsed -> setSidebarCollapsed(event.collapsed)
             is LayoutSettingsEvent.SetModernSidebarEnabled -> setModernSidebarEnabled(event.enabled)
+            is LayoutSettingsEvent.SetFavoritesTabEnabled -> setFavoritesTabEnabled(event.enabled)
             is LayoutSettingsEvent.SetModernSidebarBlurEnabled -> setModernSidebarBlurEnabled(event.enabled)
             is LayoutSettingsEvent.SetModernLandscapePostersEnabled -> setModernLandscapePostersEnabled(event.enabled)
             is LayoutSettingsEvent.SetModernHeroFullScreenBackdropEnabled -> setModernHeroFullScreenBackdropEnabled(event.enabled)
@@ -540,6 +548,13 @@ class LayoutSettingsViewModel @Inject constructor(
         if (_uiState.value.modernSidebarEnabled == enabled) return
         viewModelScope.launch {
             layoutPreferenceDataStore.setModernSidebarEnabled(enabled)
+        }
+    }
+
+    private fun setFavoritesTabEnabled(enabled: Boolean) {
+        if (_uiState.value.favoritesTabEnabled == enabled) return
+        viewModelScope.launch {
+            layoutPreferenceDataStore.setFavoritesTabEnabled(enabled)
         }
     }
 

@@ -984,6 +984,8 @@
     <string name="layout_hide_floating_pill_sub">Hide the floating navigation indicator on the home screen.</string>
     <string name="layout_modern_sidebar">Modern Sidebar</string>
     <string name="layout_modern_sidebar_sub">Enable floating sidebar navigation.</string>
+    <string name="layout_favorites_tab">Favorites Tab</string>
+    <string name="layout_favorites_tab_sub">Show a Favorites tab for browsing items you\'ve saved.</string>
     <string name="layout_modern_sidebar_blur">Modern Sidebar Blur</string>
     <string name="layout_modern_sidebar_blur_sub">Toggle blur effect for modern sidebar surfaces.</string>
     <string name="layout_fullscreen_hero_backdrop">Fullscreen Hero Backdrop</string>
@@ -2295,6 +2297,7 @@
     <string name="nav_discover">Discover</string>
     <string name="nav_search">Search</string>
     <string name="nav_library">Library</string>
+    <string name="nav_favorites">Favorites</string>
     <string name="nav_addons">Addons</string>
     <string name="nav_movies">Movies</string>
     <string name="nav_series">Series</string>

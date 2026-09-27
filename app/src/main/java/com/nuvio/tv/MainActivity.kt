@@ -49,6 +49,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
@@ -249,6 +250,7 @@ private data class MainUiPrefs(
     val modernSidebarEnabled: Boolean = false,
     val modernSidebarBlurPref: Boolean = false,
     val discoverLocation: DiscoverLocation? = null,
+    val favoritesTabEnabled: Boolean = true,
     val smoothBringIntoViewEnabled: Boolean = true,
     val fastHorizontalNavigationEnabled: Boolean = false,
     val composeHighlighterEnabled: Boolean = false,
@@ -555,8 +557,9 @@ open class MainActivity : ComponentActivity() {
                     themeAndExperienceFlow,
                     layoutAndFeaturesFlow,
                     extraFeaturesFlow,
-                    layoutPreferenceDataStore.cardDepthStyle
-                ) { themePrefs, layoutPrefs, extraPrefs, cardDepthStyle ->
+                    layoutPreferenceDataStore.cardDepthStyle,
+                    layoutPreferenceDataStore.favoritesTabEnabled,
+                ) { themePrefs, layoutPrefs, extraPrefs, cardDepthStyle, favoritesTabEnabled ->
                     themePrefs.copy(
                         hasChosenLayout = layoutPrefs.hasChosenLayout,
                         sidebarCollapsed = layoutPrefs.sidebarCollapsed,
@@ -568,7 +571,8 @@ open class MainActivity : ComponentActivity() {
                         fastHorizontalNavigationEnabled = extraPrefs.fastHorizontalNavigationEnabled,
                         composeHighlighterEnabled = extraPrefs.composeHighlighterEnabled,
                         settingsUiStyle = extraPrefs.settingsUiStyle,
-                        cardDepthStyle = cardDepthStyle
+                        cardDepthStyle = cardDepthStyle,
+                        favoritesTabEnabled = favoritesTabEnabled,
                     )
                 }
             }
@@ -581,6 +585,7 @@ open class MainActivity : ComponentActivity() {
                 }.collectAsState(initial = null)
             }
             val discoverLocation = mainUiPrefs.discoverLocation
+            val favoritesTabEnabled = mainUiPrefs.favoritesTabEnabled
 
             NuvioTheme(
                 appTheme = mainUiPrefs.theme,
@@ -1006,7 +1011,7 @@ open class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    val rootRoutes = remember(discoverLocation) {
+                    val rootRoutes = remember(discoverLocation, favoritesTabEnabled) {
                         buildSet {
                             add(Screen.Home.route)
                             add(Screen.Search.route)
@@ -1015,6 +1020,9 @@ open class MainActivity : ComponentActivity() {
                             if (discoverLocation == DiscoverLocation.IN_SIDEBAR) {
                                 add(Screen.Discover.route)
                             }
+                            if (favoritesTabEnabled) {
+                                add(Screen.Favorites.route)
+                            }
                         }
                     }
 
@@ -1022,14 +1030,17 @@ open class MainActivity : ComponentActivity() {
                     val strNavDiscover = stringResource(R.string.nav_discover)
                     val strNavSearch = stringResource(R.string.nav_search)
                     val strNavLibrary = stringResource(R.string.nav_library)
+                    val strNavFavorites = stringResource(R.string.nav_favorites)
                     val strNavSettings = stringResource(R.string.nav_settings)
                     val drawerItems = remember(
                         strNavHome,
                         strNavDiscover,
                         strNavSearch,
                         strNavLibrary,
+                        strNavFavorites,
                         strNavSettings,
-                        discoverLocation
+                        discoverLocation,
+                        favoritesTabEnabled
                     ) {
                         buildList {
                             add(
@@ -1062,6 +1073,15 @@ open class MainActivity : ComponentActivity() {
                                     iconRes = R.raw.sidebar_library
                                 )
                             )
+                            if (favoritesTabEnabled) {
+                                add(
+                                    DrawerItem(
+                                        route = Screen.Favorites.route,
+                                        label = strNavFavorites,
+                                        icon = Icons.Default.Favorite
+                                    )
+                                )
+                            }
                             add(
                                 DrawerItem(
                                     route = Screen.Settings.route,

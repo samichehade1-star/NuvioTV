@@ -75,6 +75,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     private val customCatalogTitlesKey = stringPreferencesKey("custom_catalog_titles")
     private val sidebarCollapsedKey = booleanPreferencesKey("sidebar_collapsed_by_default")
     private val modernSidebarEnabledKey = booleanPreferencesKey("modern_sidebar_enabled")
+    private val favoritesTabEnabledKey = booleanPreferencesKey("favorites_tab_enabled")
     private val legacyModernSidebarEnabledKey = booleanPreferencesKey("glass_sidepanel_enabled")
     private val modernSidebarBlurEnabledKey = booleanPreferencesKey("modern_sidebar_blur_enabled")
     private val modernLandscapePostersEnabledKey = booleanPreferencesKey("modern_landscape_posters_enabled")
@@ -224,6 +225,21 @@ class LayoutPreferenceDataStore @Inject constructor(
 
     val modernSidebarEnabled: Flow<Boolean> = profileFlow { prefs ->
         prefs[modernSidebarEnabledKey] ?: prefs[legacyModernSidebarEnabledKey] ?: false
+    }
+
+    /**
+     * Shows a "Favorites" sidebar tab for browsing saved items (the existing LibraryScreen,
+     * which lost its tab when Library was repurposed into the Networks hub). Defaults on since
+     * this restores functionality that was previously always available.
+     */
+    val favoritesTabEnabled: Flow<Boolean> = profileFlow { prefs ->
+        prefs[favoritesTabEnabledKey] ?: true
+    }
+
+    suspend fun setFavoritesTabEnabled(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[favoritesTabEnabledKey] = enabled
+        }
     }
 
     val modernSidebarBlurEnabled: Flow<Boolean> = profileFlow { prefs ->
