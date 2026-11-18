@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.search
 
+import com.nuvio.tv.domain.model.catalogRowLegacyKey
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,6 +9,7 @@ import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.data.local.DiscoverSelectionDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.SearchHistoryDataStore
+import com.nuvio.tv.data.mediaserver.ServerCatalog
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.CatalogDescriptor
 import com.nuvio.tv.domain.model.CatalogRow
@@ -56,6 +58,7 @@ class SearchViewModel @Inject constructor(
     private val watchProgressRepository: com.nuvio.tv.domain.repository.WatchProgressRepository,
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
+    private val serverCatalog: ServerCatalog,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -94,6 +97,7 @@ class SearchViewModel @Inject constructor(
     private var lastCompletedRequestKey: String? = null
     private var hasRenderedFirstCatalog = false
     private var pendingCatalogResponses = 0
+    private var lastNonEmptyQuery: String = ""
     private var revealBatchAfterNextDiscoverFetch = false
     private var hideUnreleasedContent = false
 
@@ -255,6 +259,20 @@ class SearchViewModel @Inject constructor(
     }
 
     private fun onQueryChanged(query: String) {
+        // Skip if query is exactly the same (no change at all)
+        if (query == _uiState.value.query) {
+            return
+        }
+        
+        // Detect if this is a recomposition artifact: transitioning to empty from the current
+        // non-empty query. This happens when focus changes and Compose recomposes the text field.
+        val isRecompositionArtifact = query.isEmpty() && query != _uiState.value.query && _uiState.value.query == lastNonEmptyQuery
+        
+        // Track non-empty queries for recomposition detection
+        if (query.isNotEmpty()) {
+            lastNonEmptyQuery = query
+        }
+
         _uiState.update {
             val trimmedInput = query.trim()
             // Narrow the strip to what still matches before anything is fetched, so a letter
@@ -270,8 +288,18 @@ class SearchViewModel @Inject constructor(
                 // Keep whatever is on screen while a keystroke waits to run. Clearing here flashed
                 // the no-results state on every letter, because on a remote each letter outlasts the
                 // debounce. The screen renders skeleton rows for this window instead.
-                catalogRows = if (trimmedInput.length < MIN_SEARCH_QUERY_LENGTH) emptyList() else it.catalogRows
+                // For recomposition artifacts (empty query during focus change), preserve catalogRows.
+                catalogRows = when {
+                    isRecompositionArtifact -> it.catalogRows
+                    trimmedInput.length < MIN_SEARCH_QUERY_LENGTH -> emptyList()
+                    else -> it.catalogRows
+                }
             )
+        }
+
+        // Skip fetches for recomposition artifacts to avoid unnecessary network calls
+        if (isRecompositionArtifact) {
+            return
         }
 
         // Drop in-flight requests for the previous keystroke before scheduling the next run.
@@ -316,13 +344,33 @@ class SearchViewModel @Inject constructor(
         return if (everyWordMatches) 3 else null
     }
 
-    /** The strip contents for [names], best match first, capped at [MAX_SUGGESTIONS]. */
+    /**
+     * The strip contents for [names], best match first, capped at [MAX_SUGGESTIONS].
+     *
+     * Titles of the same rank keep the order of [names], which is the addon's own relevance order.
+     * Sorting them alphabetically put five titles ahead of "Jurassic Park" for "juras", and of
+     * "Slow Horses" for "slo", past the few completions a TV keyboard shows.
+     */
     private fun rankedSuggestions(names: Collection<String>, queryLower: String): List<String> =
         names
             .mapNotNull { name -> suggestionRank(name, queryLower)?.let { name to it } }
-            .sortedWith(compareBy({ it.second }, { it.first.lowercase() }))
+            .sortedBy { it.second }
             .map { it.first }
             .take(MAX_SUGGESTIONS)
+
+    /**
+     * Every catalog's titles, taken one position at a time: each catalog's first title, then each
+     * one's second, and so on, in catalog order. Each catalog's best matches lead, and the result
+     * does not depend on which catalog happened to answer first.
+     */
+    private fun mergedCatalogNames(namesByCatalog: Map<Int, List<String>>, catalogCount: Int): List<String> {
+        val catalogs = (0 until catalogCount).mapNotNull { namesByCatalog[it] }
+        val merged = LinkedHashSet<String>()
+        for (position in 0 until (catalogs.maxOfOrNull { it.size } ?: 0)) {
+            catalogs.forEach { names -> names.getOrNull(position)?.let(merged::add) }
+        }
+        return merged.toList()
+    }
 
     private fun fetchSuggestions(query: String) {
         suggestionJob?.cancel()
@@ -343,7 +391,7 @@ class SearchViewModel @Inject constructor(
             kotlinx.coroutines.delay(SUGGESTION_DEBOUNCE_MS)
 
             val addons = try {
-                addonRepository.getInstalledAddons().first().enabledAddons()
+                searchAddons()
             } catch (_: Exception) {
                 return@launch
             }
@@ -356,9 +404,10 @@ class SearchViewModel @Inject constructor(
                 return@launch
             }
 
-            val collectedNames = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+            // Each catalog's titles in the order it returned them, keyed by its place in searchTargets.
+            val namesByCatalog = java.util.concurrent.ConcurrentHashMap<Int, List<String>>()
             val queryLower = query.lowercase()
-            val suggestionJobs = searchTargets.map { (addon, catalog) ->
+            val suggestionJobs = searchTargets.mapIndexed { catalogIndex, (addon, catalog) ->
                 launch {
                     try {
                         catalogRepository.getCatalog(
@@ -371,21 +420,23 @@ class SearchViewModel @Inject constructor(
                             skip = 0,
                             skipStep = 100,
                             extraArgs = mapOf("search" to query),
-                            supportsSkip = false
+                            supportsSkip = false,
+                            posterScreen = com.nuvio.tv.core.poster.CustomPosterScreen.SEARCH
                         ).collect { result ->
                             if (result is NetworkResult.Success && _uiState.value.query.trim() == query) {
-                                var added = false
-                                result.data.items.forEach { item ->
-                                    if (collectedNames.add(item.name)) added = true
-                                }
-                                // Catalog results arrive independently and accumulate into one
-                                // shared set, so a batch whose titles all fail the filter ranks
-                                // to nothing while the batch holding the match is still in
-                                // flight. Only the settle below may empty the strip: an empty
-                                // push tells the keyboard there are no completions, and it does
-                                // not always take them back when the next batch lands.
-                                if (added) {
-                                    val ranked = rankedSuggestions(collectedNames, queryLower)
+                                val names = result.data.items.map { it.name }
+                                val previous = namesByCatalog.put(catalogIndex, names)
+                                // Catalog results arrive independently and are merged, so a batch
+                                // whose titles all fail the filter ranks to nothing while the batch
+                                // holding the match is still in flight. Only the settle below may
+                                // empty the strip: an empty push tells the keyboard there are no
+                                // completions, and it does not always take them back when the next
+                                // batch lands.
+                                if (names != previous) {
+                                    val ranked = rankedSuggestions(
+                                        mergedCatalogNames(namesByCatalog, searchTargets.size),
+                                        queryLower
+                                    )
                                     if (ranked.isNotEmpty()) {
                                         _uiState.update { it.copy(suggestions = ranked) }
                                     }
@@ -408,7 +459,8 @@ class SearchViewModel @Inject constructor(
             // rather than blinking on every keystroke. It must be cleared here or it would go
             // on captioning text the field no longer contains.
             if (_uiState.value.query.trim() == query) {
-                _uiState.update { it.copy(suggestions = rankedSuggestions(collectedNames, queryLower)) }
+                val ranked = rankedSuggestions(mergedCatalogNames(namesByCatalog, searchTargets.size), queryLower)
+                _uiState.update { it.copy(suggestions = ranked) }
             }
         }
     }
@@ -539,7 +591,7 @@ class SearchViewModel @Inject constructor(
 
         val job = viewModelScope.launch {
             val addons = try {
-                addonRepository.getInstalledAddons().first().enabledAddons()
+                searchAddons()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -712,7 +764,8 @@ class SearchViewModel @Inject constructor(
             skip = 0,
             skipStep = skipStep,
             extraArgs = mapOf("search" to query),
-            supportsSkip = supportsSkip
+            supportsSkip = supportsSkip,
+            posterScreen = com.nuvio.tv.core.poster.CustomPosterScreen.SEARCH
         ).collect { result ->
             when (result) {
                 is NetworkResult.Success -> {
@@ -790,7 +843,8 @@ class SearchViewModel @Inject constructor(
                 skip = nextSkip,
                 skipStep = currentRow.skipStep,
                 extraArgs = mapOf("search" to query),
-                supportsSkip = currentRow.supportsSkip
+                supportsSkip = currentRow.supportsSkip,
+                posterScreen = com.nuvio.tv.core.poster.CustomPosterScreen.SEARCH
             ).collect { result ->
                 when (result) {
                     is NetworkResult.Success -> {
@@ -869,11 +923,14 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    private suspend fun searchAddons(): List<Addon> =
+        addonRepository.getInstalledAddons().first().enabledAddons() + serverCatalog.searchAddons.first()
+
     private suspend fun loadDiscoverCatalogs() {
         if (_uiState.value.discoverLocation == DiscoverLocation.OFF) return
         _uiState.update { it.copy(discoverLoading = true) }
         val addons = try {
-            addonRepository.getInstalledAddons().first().enabledAddons()
+            searchAddons()
         } catch (_: Exception) {
             _uiState.update { it.copy(discoverInitialized = true, discoverLoading = false) }
             return
@@ -891,7 +948,7 @@ class SearchViewModel @Inject constructor(
                         ?.options
                         .orEmpty()
                     DiscoverCatalog(
-                        key = "${addon.id}_${catalog.apiType}_${catalog.id}",
+                        key = catalogRowLegacyKey(addon.id, catalog.apiType, catalog.id),
                         addonId = addon.id,
                         addonName = addon.displayName,
                         addonBaseUrl = addon.baseUrl,
@@ -1064,7 +1121,8 @@ class SearchViewModel @Inject constructor(
                 skip = skip,
                 skipStep = selectedCatalog.skipStep,
                 extraArgs = extraArgs,
-                supportsSkip = selectedCatalog.supportsSkip
+                supportsSkip = selectedCatalog.supportsSkip,
+                posterScreen = com.nuvio.tv.core.poster.CustomPosterScreen.SEARCH
             ).collect { result ->
                 if (_uiState.value.discoverLocation == DiscoverLocation.OFF) return@collect
                 when (result) {

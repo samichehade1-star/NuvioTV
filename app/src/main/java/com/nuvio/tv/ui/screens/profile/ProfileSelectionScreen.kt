@@ -1,5 +1,8 @@
 package com.nuvio.tv.ui.screens.profile
 
+import androidx.tv.material3.MaterialTheme
+import com.nuvio.tv.ui.theme.NuvioPrimitives
+import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.theme.NuvioMotion
 
 import com.nuvio.tv.ui.theme.NuvioTheme
@@ -15,9 +18,16 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -30,6 +40,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -48,6 +60,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -67,6 +80,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -78,6 +92,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -86,7 +102,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.core.view.ViewCompat
@@ -220,9 +238,11 @@ fun ProfileSelectionScreen(
         profileBackgroundCatalog.associateBy { it.id }
     }
     val memberAccess = Membership.access
-    var focusedAvatarColor by remember { mutableStateOf(Color(0xFF1E88E5)) }
+    var focusedAvatarColor by remember { mutableStateOf(NuvioPrimitives.blue500) }
     var focusedProfileId by remember { mutableStateOf<Int?>(null) }
     var showCreateProfile by remember { mutableStateOf(false) }
+    val createOverlayVisibility = remember { MutableTransitionState(false) }
+    createOverlayVisibility.targetState = showCreateProfile
     var longPressedProfile by remember { mutableStateOf<UserProfile?>(null) }
     var suppressOptionsDialogFirstKeyUp by remember { mutableStateOf(true) }
     var profileToDelete by remember { mutableStateOf<UserProfile?>(null) }
@@ -380,6 +400,8 @@ fun ProfileSelectionScreen(
                     screenSubtitle = screenSubtitle,
                     screenHint = screenHint,
                     isManagementMode = isManagementMode,
+                    enabled = !createOverlayVisibility.currentState &&
+                        !createOverlayVisibility.targetState && profileToEdit == null,
                     profiles = profiles,
                     activeProfileId = activeProfileId,
                     canAddProfile = viewModel.canAddProfile,
@@ -528,7 +550,7 @@ fun ProfileSelectionScreen(
 
         // Create Profile Overlay
         AnimatedVisibility(
-            visible = showCreateProfile,
+            visibleState = createOverlayVisibility,
             enter = fadeIn(tween(200)),
             exit = fadeOut(tween(150))
         ) {
@@ -813,7 +835,7 @@ private fun ProfileSelectionBackground(
     // Use fixed dark colors so the gradient is consistent.
     // Otherwise, profile selector and splash screen needs to know about user template
     val baseBg = Color(0xFF121212)
-    val baseBgElevated = Color(0xFF1E1E1E)
+    val baseBgElevated = NuvioPrimitives.neutral875
     val gradientTop = lerp(baseBgElevated, animatedAvatarColor, 0.3f)
     val gradientMid = lerp(baseBg, animatedAvatarColor, 0.14f)
     val halfFadeStrong = animatedAvatarColor.copy(alpha = 0.26f)
@@ -881,6 +903,7 @@ private fun ProfileSelectionMainContent(
     screenSubtitle: String,
     screenHint: String,
     isManagementMode: Boolean,
+    enabled: Boolean,
     profiles: List<UserProfile>,
     activeProfileId: Int,
     canAddProfile: Boolean,
@@ -933,6 +956,7 @@ private fun ProfileSelectionMainContent(
             profiles = profiles,
             activeProfileId = activeProfileId,
             isManagementMode = isManagementMode,
+            enabled = enabled,
             canAddProfile = canAddProfile,
             profilePinEnabled = profilePinEnabled,
             avatarImageUrlsById = avatarImageUrlsById,
@@ -955,10 +979,11 @@ private fun ProfileSelectionMainContent(
 }
 
 @Composable
-private fun ProfileGrid(
+internal fun ProfileGrid(
     profiles: List<UserProfile>,
     activeProfileId: Int,
     isManagementMode: Boolean,
+    enabled: Boolean,
     canAddProfile: Boolean,
     profilePinEnabled: Map<Int, Boolean>,
     avatarImageUrlsById: Map<String, String>,
@@ -977,11 +1002,13 @@ private fun ProfileGrid(
     val focusRequesters = remember(totalItems) {
         List(totalItems) { FocusRequester() }
     }
+    var lastFocusedIndex by remember { mutableStateOf<Int?>(null) }
 
-    LaunchedEffect(totalItems, initialFocusIndex, isManagementMode) {
+    LaunchedEffect(totalItems, initialFocusIndex, isManagementMode, enabled) {
         repeat(2) { withFrameNanos { } }
-        if (focusRequesters.isNotEmpty() && initialFocusIndex in focusRequesters.indices) {
-            runCatching { focusRequesters[initialFocusIndex].requestFocus() }
+        val focusIndex = lastFocusedIndex?.takeIf { it in focusRequesters.indices } ?: initialFocusIndex
+        if (enabled && focusIndex in focusRequesters.indices) {
+            runCatching { focusRequesters[focusIndex].requestFocus() }
         }
     }
 
@@ -1024,9 +1051,13 @@ private fun ProfileGrid(
                         avatarImageUrl = profile.avatarUrl?.takeIf { it.isNotBlank() }
                             ?: profile.avatarId?.let(avatarImageUrlsById::get),
                         focusRequester = focusRequesters[index],
+                        enabled = enabled,
                         compact = useCompactCards,
                         profileTheme = profileThemes[profile.id],
-                        onFocused = { onProfileFocused(profile) },
+                        onFocused = {
+                            lastFocusedIndex = index
+                            onProfileFocused(profile)
+                        },
                         onClick = { onProfileSelected(profile) },
                         onLongPress = { onProfileLongPress(profile) }
                     )
@@ -1034,8 +1065,12 @@ private fun ProfileGrid(
                 if (canAddProfile) {
                     AddProfileCard(
                         focusRequester = focusRequesters[profiles.size],
+                        enabled = enabled,
                         compact = useCompactCards,
-                        onFocused = { onProfileFocused(null) },
+                        onFocused = {
+                            lastFocusedIndex = profiles.size
+                            onProfileFocused(null)
+                        },
                         onClick = onAddProfileClick
                     )
                 }
@@ -1059,6 +1094,7 @@ private fun ProfileCard(
     profile: UserProfile,
     avatarImageUrl: String?,
     focusRequester: FocusRequester,
+    enabled: Boolean,
     compact: Boolean,
     profileTheme: com.nuvio.tv.domain.model.AppTheme? = null,
     onFocused: () -> Unit,
@@ -1109,6 +1145,7 @@ private fun ProfileCard(
                 scaleY = itemScale
             }
             .focusRequester(focusRequester)
+            .focusProperties { canFocus = enabled }
             .onFocusChanged {
                 isFocused = it.isFocused
                 if (it.isFocused) onFocused()
@@ -1144,8 +1181,10 @@ private fun ProfileCard(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                enabled = enabled,
                 onClick = onClick
             )
+            .semantics { role = Role.Button }
             .padding(
                 horizontal = ProfileSelectionSpacing.CardPaddingHorizontal,
                 vertical = ProfileSelectionSpacing.CardPaddingVertical
@@ -1217,6 +1256,9 @@ private fun ProfileCard(
 
         Text(
             text = profile.name,
+            style = MaterialTheme.typography.labelLarge.copy(
+                textDirection = profile.name.contentTextDirection()
+            ),
             color = nameColor,
             fontSize = if (compact) 15.sp else 17.sp,
             fontWeight = nameWeight,
@@ -1246,12 +1288,13 @@ private fun ProfileCard(
 
 private fun parseProfileColor(colorHex: String): Color {
     return runCatching { Color(android.graphics.Color.parseColor(colorHex)) }
-        .getOrDefault(Color(0xFF1E88E5))
+        .getOrDefault(NuvioPrimitives.blue500)
 }
 
 @Composable
 private fun AddProfileCard(
     focusRequester: FocusRequester,
+    enabled: Boolean,
     compact: Boolean,
     onFocused: () -> Unit,
     onClick: () -> Unit
@@ -1297,6 +1340,7 @@ private fun AddProfileCard(
                 scaleY = itemScale
             }
             .focusRequester(focusRequester)
+            .focusProperties { canFocus = enabled }
             .onFocusChanged {
                 isFocused = it.isFocused
                 if (it.isFocused) onFocused()
@@ -1304,8 +1348,10 @@ private fun AddProfileCard(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                enabled = enabled,
                 onClick = onClick
             )
+            .semantics { role = Role.Button }
             .padding(
                 horizontal = ProfileSelectionSpacing.CardPaddingHorizontal,
                 vertical = ProfileSelectionSpacing.CardPaddingVertical
@@ -1380,7 +1426,7 @@ private fun AddProfileCard(
 }
 
 @Composable
-private fun CreateProfileOverlay(
+internal fun CreateProfileOverlay(
     profiles: List<UserProfile>,
     avatarCatalog: List<AvatarCatalogItem>,
     isCreating: Boolean,
@@ -1406,6 +1452,9 @@ private fun CreateProfileOverlay(
         avatarCatalog.find { it.id == selectedAvatarId }
     }
     val nameFocusRequester = remember { FocusRequester() }
+    val settingsFocusRequester = remember { FocusRequester() }
+    val avatarFocusRequester = remember { FocusRequester() }
+    var leftPanelFocusRequester by remember { mutableStateOf(nameFocusRequester) }
 
     LaunchedEffect(Unit) {
         repeat(2) { withFrameNanos { } }
@@ -1427,11 +1476,9 @@ private fun CreateProfileOverlay(
                     false
                 }
             }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            ),
+            .pointerInput(Unit) {
+                detectTapGestures { onDismiss() }
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -1441,11 +1488,7 @@ private fun CreateProfileOverlay(
                 .clip(RoundedCornerShape(20.dp))
                 .background(NuvioTheme.colors.BackgroundElevated)
                 .border(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border, RoundedCornerShape(20.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {} // prevent dismiss when clicking the panel
-                )
+                .pointerInput(Unit) { detectTapGestures { } }
                 .padding(NuvioTheme.spacing.xxl),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1517,6 +1560,9 @@ private fun CreateProfileOverlay(
 
                     Text(
                         text = profileName.ifBlank { stringResource(R.string.profile_name_placeholder) },
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = profileName.contentTextDirection()
+                        ),
                         color = if (profileName.isBlank()) NuvioTheme.colors.TextSecondary else NuvioTheme.colors.TextPrimary,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
@@ -1528,7 +1574,9 @@ private fun CreateProfileOverlay(
                     ProfileNameField(
                         value = profileName,
                         onValueChange = { if (it.length <= 20) profileName = it },
-                        focusRequester = nameFocusRequester
+                        focusRequester = nameFocusRequester,
+                        rightFocusRequester = avatarFocusRequester.takeIf { avatarCatalog.isNotEmpty() },
+                        onFocused = { leftPanelFocusRequester = nameFocusRequester }
                     )
 
                     val selectedCopySource = profiles.firstOrNull { it.id == selectedCopySourceId }
@@ -1542,7 +1590,15 @@ private fun CreateProfileOverlay(
                             )
                         },
                         isPrimary = false,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(settingsFocusRequester)
+                            .focusProperties {
+                                if (avatarCatalog.isNotEmpty()) right = avatarFocusRequester
+                            }
+                            .onFocusChanged {
+                                if (it.isFocused) leftPanelFocusRequester = settingsFocusRequester
+                            },
                         enabled = !isCreating,
                         onClick = { showSettingsSourceDialog = true }
                     )
@@ -1591,6 +1647,8 @@ private fun CreateProfileOverlay(
                             onAvatarFocused = { avatar ->
                                 focusedAvatarName = avatar?.displayName
                             },
+                            entryFocusRequester = avatarFocusRequester,
+                            leftFocusRequester = if (isCreating) nameFocusRequester else leftPanelFocusRequester,
                             modifier = Modifier.heightIn(max = 320.dp)
                         )
 
@@ -1711,7 +1769,7 @@ private fun rememberKeyboardVisibilityState(): KeyboardVisibilityState {
 }
 
 @Composable
-private fun EditProfileOverlay(
+internal fun EditProfileOverlay(
     profile: UserProfile,
     avatarCatalog: List<AvatarCatalogItem>,
     profileBackgroundCatalog: List<ProfileBackgroundCatalogItem>,
@@ -1747,6 +1805,9 @@ private fun EditProfileOverlay(
         else -> null
     }
     val nameFocusRequester = remember { FocusRequester() }
+    val cancelFocusRequester = remember { FocusRequester() }
+    val avatarFocusRequester = remember { FocusRequester() }
+    var leftPanelFocusRequester by remember { mutableStateOf(nameFocusRequester) }
 
     LaunchedEffect(Unit) {
         repeat(2) { withFrameNanos { } }
@@ -1772,11 +1833,9 @@ private fun EditProfileOverlay(
                     false
                 }
             }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            ),
+            .pointerInput(Unit) {
+                detectTapGestures { onDismiss() }
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -1786,11 +1845,7 @@ private fun EditProfileOverlay(
                 .clip(RoundedCornerShape(20.dp))
                 .background(NuvioTheme.colors.BackgroundElevated)
                 .border(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border, RoundedCornerShape(20.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {}
-                )
+                .pointerInput(Unit) { detectTapGestures { } }
                 .padding(NuvioTheme.spacing.xxl),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1811,6 +1866,9 @@ private fun EditProfileOverlay(
                     )
                     Text(
                         text = profile.name,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = profile.name.contentTextDirection()
+                        ),
                         color = Color.White,
                         fontSize = 30.sp,
                         fontWeight = FontWeight.Black
@@ -1860,6 +1918,9 @@ private fun EditProfileOverlay(
 
                     Text(
                         text = profileName.ifBlank { stringResource(R.string.profile_name_placeholder) },
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            textDirection = profileName.contentTextDirection()
+                        ),
                         color = if (profileName.isBlank()) NuvioTheme.colors.TextSecondary else NuvioTheme.colors.TextPrimary,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
@@ -1871,13 +1932,27 @@ private fun EditProfileOverlay(
                     ProfileNameField(
                         value = profileName,
                         onValueChange = { if (it.length <= 20) profileName = it },
-                        focusRequester = nameFocusRequester
+                        focusRequester = nameFocusRequester,
+                        rightFocusRequester = avatarFocusRequester.takeIf {
+                            selectedEditorTab == ProfileEditorTab.Avatar && avatarCatalog.isNotEmpty()
+                        },
+                        onFocused = { leftPanelFocusRequester = nameFocusRequester }
                     )
 
                     OverlayButton(
                         text = stringResource(R.string.profile_cancel),
                         isPrimary = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(cancelFocusRequester)
+                            .focusProperties {
+                                if (selectedEditorTab == ProfileEditorTab.Avatar && avatarCatalog.isNotEmpty()) {
+                                    right = avatarFocusRequester
+                                }
+                            }
+                            .onFocusChanged {
+                                if (it.isFocused) leftPanelFocusRequester = cancelFocusRequester
+                            },
                         onClick = onDismiss
                     )
                 }
@@ -1933,6 +2008,8 @@ private fun EditProfileOverlay(
                                     onAvatarFocused = { avatar ->
                                         focusedAvatarName = avatar?.displayName
                                     },
+                                    entryFocusRequester = avatarFocusRequester,
+                                    leftFocusRequester = leftPanelFocusRequester,
                                     modifier = Modifier.heightIn(max = 280.dp)
                                 )
 
@@ -2042,7 +2119,7 @@ private fun ProfilePinOverlay(
 ) {
     val density = LocalDensity.current
     val keyboardState = rememberKeyboardVisibilityState()
-    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember(state) { FocusRequester() }
     val isSingleEntryMode = state !is ProfilePinOverlayState.Set
     var pin by remember(state) { mutableStateOf("") }
@@ -2050,7 +2127,6 @@ private fun ProfilePinOverlay(
     var entryStage by remember(state) { mutableStateOf(ProfilePinEntryStage.Create) }
     var internalErrorMessage by remember(state) { mutableStateOf<String?>(null) }
     var isInputFocused by remember(state) { mutableStateOf(false) }
-    var keyboardWasVisible by remember(state) { mutableStateOf(false) }
     val shakeOffset = remember(state) { androidx.compose.animation.core.Animatable(0f) }
     val cursorAlpha by rememberInfiniteTransition(label = "pinCursor").animateFloat(
         initialValue = 0.25f,
@@ -2111,10 +2187,10 @@ private fun ProfilePinOverlay(
         28.dp
     }
 
-    BackHandler(enabled = isInputFocused && keyboardState.isVisible) {
-        focusManager.clearFocus(force = true)
-    }
-
+    // The hidden PIN field is the overlay's only focusable, so focus always returns to it. It does
+    // not open the keyboard on focus (that reopened it right after Back closed it, so Back could
+    // never leave the overlay); the keyboard opens with the overlay and on OK instead. Back while
+    // the keyboard is open only closes it, as the keyboard handles that key itself.
     BackHandler(onBack = onDismiss)
 
     suspend fun playErrorAnimation() {
@@ -2127,15 +2203,7 @@ private fun ProfilePinOverlay(
     LaunchedEffect(state) {
         repeat(2) { withFrameNanos { } }
         runCatching { focusRequester.requestFocus() }
-    }
-
-    LaunchedEffect(keyboardState.isVisible, isInputFocused) {
-        if (keyboardState.isVisible) {
-            keyboardWasVisible = true
-        } else if (keyboardWasVisible && isInputFocused) {
-            keyboardWasVisible = false
-            focusManager.clearFocus(force = true)
-        }
+        keyboardController?.show()
     }
 
     LaunchedEffect(errorMessage) {
@@ -2176,11 +2244,12 @@ private fun ProfilePinOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = { runCatching { focusRequester.requestFocus() } }
-            )
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    runCatching { focusRequester.requestFocus() }
+                    keyboardController?.show()
+                }
+            }
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
                 if (native.action != AndroidKeyEvent.ACTION_DOWN) {
@@ -2189,11 +2258,15 @@ private fun ProfilePinOverlay(
                 when (native.keyCode) {
                     AndroidKeyEvent.KEYCODE_BACK,
                     AndroidKeyEvent.KEYCODE_ESCAPE -> {
-                        if (isInputFocused) {
-                            focusManager.clearFocus(force = true)
-                        } else {
-                            onDismiss()
-                        }
+                        onDismiss()
+                        true
+                    }
+
+                    AndroidKeyEvent.KEYCODE_DPAD_CENTER,
+                    AndroidKeyEvent.KEYCODE_ENTER,
+                    AndroidKeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                        runCatching { focusRequester.requestFocus() }
+                        keyboardController?.show()
                         true
                     }
 
@@ -2285,7 +2358,9 @@ private fun ProfilePinOverlay(
 
             Text(
                 text = supportText,
-                modifier = Modifier.widthIn(max = ProfileSelectionSpacing.PinSupportMaxWidth),
+                modifier = Modifier
+                    .widthIn(max = ProfileSelectionSpacing.PinSupportMaxWidth)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
                 color = supportTextColor,
                 fontSize = supportFontSize.sp,
                 fontWeight = FontWeight.Medium,
@@ -2322,6 +2397,8 @@ private fun ProfilePinOverlay(
             Spacer(modifier = Modifier.height(contentBottomPadding))
         }
 
+        val pinFieldLabel = stringResource(R.string.profile_pin_enter)
+
         BasicTextField(
             value = pin,
             onValueChange = { value ->
@@ -2334,6 +2411,7 @@ private fun ProfilePinOverlay(
             modifier = Modifier
                 .size(NuvioTheme.spacing.hairline)
                 .graphicsLayer { alpha = 0f }
+                .semantics { contentDescription = pinFieldLabel }
                 .focusRequester(focusRequester)
                 .onFocusChanged { state ->
                     isInputFocused = state.isFocused
@@ -2342,7 +2420,8 @@ private fun ProfilePinOverlay(
             textStyle = TextStyle(color = Color.Transparent),
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.NumberPassword,
-                imeAction = ImeAction.Done
+                imeAction = ImeAction.Done,
+                showKeyboardOnFocus = false
             ),
             cursorBrush = SolidColor(Color.Transparent)
         )
@@ -2380,6 +2459,7 @@ private fun ProfilePinBoxes(
         label = "pinDotSize"
     )
 
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(boxGap),
@@ -2454,6 +2534,7 @@ private fun ProfilePinBoxes(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -2472,6 +2553,8 @@ private fun ProfileNameField(
     value: String,
     onValueChange: (String) -> Unit,
     focusRequester: FocusRequester,
+    rightFocusRequester: FocusRequester? = null,
+    onFocused: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -2514,11 +2597,29 @@ private fun ProfileNameField(
             onValueChange = onValueChange,
             modifier = Modifier
                 .fillMaxWidth()
+                .onPreviewKeyEvent { event ->
+                    val native = event.nativeKeyEvent
+                    if (rightFocusRequester != null &&
+                        native.action == AndroidKeyEvent.ACTION_DOWN &&
+                        native.keyCode == AndroidKeyEvent.KEYCODE_DPAD_RIGHT
+                    ) {
+                        rightFocusRequester.requestFocus()
+                    } else {
+                        false
+                    }
+                }
                 .focusRequester(focusRequester)
-                .onFocusChanged { isFocused = it.isFocused },
+                .focusProperties {
+                    if (rightFocusRequester != null) right = rightFocusRequester
+                }
+                .onFocusChanged {
+                    isFocused = it.isFocused
+                    if (it.isFocused) onFocused()
+                },
             textStyle = TextStyle(
                 color = Color.White,
-                fontSize = 16.sp
+                fontSize = 16.sp,
+                textDirection = TextDirection.Content
             ),
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -2607,6 +2708,7 @@ private fun OverlayButton(
                 enabled = enabled,
                 onClick = onClick
             )
+            .semantics { role = Role.Button }
             .padding(horizontal = 28.dp, vertical = NuvioTheme.spacing.md),
         contentAlignment = Alignment.Center
     ) {
